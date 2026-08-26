@@ -12,7 +12,7 @@ Putting `wezterm-font` into the GPUI graph still pulled vendored FreeType (HarfB
 ## Decision
 
 1. **wezterm-gui / root workspace:** unchanged. `wezterm-font` default features are `vendored-freetype` + `native-fontconfig`. Vendored `deps/freetype` remains the `links = "freetype"` owner.
-2. **wezterm-gpui graph:** GPUI's `freetype-sys` `=0.20.1` is the only FreeType. `wezterm-gpui` depends on it explicitly. `wezterm-font` is path-dep with `default-features = false, features = ["sys-freetype"]`.
+2. **wezterm-gpui graph:** GPUI's `freetype-sys` `=0.20.1` is the only FreeType. `wezterm-gpui` depends on it explicitly. `wezterm-font` is path-dep with `default-features = false, features = ["sys-freetype", "vendor-jetbrains"]`. JetBrains Mono is compiled in because wezterm-gui's default `font` family is that name; `sys-freetype` alone does not enable `vendor-jetbrains`.
 3. **`gpui-freetype` (`deps/freetype-from-sys`):** reuses WezTerm's bindgen + fixed-point wrappers (`deps/freetype/src/lib.rs`) and does **not** depend on `freetype-sys` (would poison the root lockfile).
 4. **HarfBuzz:** features `vendored-freetype` (default) vs `sys-freetype` (headers from the `freetype-sys` crate sources; no `freetype-sys` crate dep). `wezterm-font` path-deps HarfBuzz with `default-features = false` so workspace inheritance cannot re-enable vendored FreeType.
 5. **Unix fontconfig:** `wezterm-font` feature `native-fontconfig` (default on for wezterm-gui). Off in wezterm-gpui so GPUI's fontconfig-sys owns `links = "fontconfig"`.

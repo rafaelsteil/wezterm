@@ -29,10 +29,17 @@ config = { path = "../config" }
 mux = { path = "../mux" }
 portable-pty = { path = "../pty" }
 promise = { path = "../promise" }
-wezterm-font = { path = "../wezterm-font", default-features = false, features = ["sys-freetype"] }
+wezterm-bidi = { path = "../bidi" }
+# sys-freetype: GPUI owns FreeType. vendor-jetbrains: same bundled face
+# wezterm-gui ships (default config family is "JetBrains Mono"). Without it,
+# GDI has nothing to load if that family is not installed, and paint falls
+# back to Consolas GPUI text (`metrics_for_idx: there is no font with idx=0`).
+wezterm-font = { path = "../wezterm-font", default-features = false, features = ["sys-freetype", "vendor-jetbrains"] }
 wezterm-term = { path = "../term" }
 # Owns `links = "freetype"` in this graph (same crate GPUI font-kit uses).
 freetype-sys = "=0.20.1"
+# GPUI RenderImage frames (same major as gpui's `image`).
+image = "0.25"
 
 [patch.crates-io]
 cairo-sys-rs = { path = "../deps/cairo" }

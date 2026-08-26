@@ -1,0 +1,6 @@
+{
+  "id": "009-cpu-composite-wezterm-font-glyphs",
+  "at": "2026-08-26T21:40:00Z",
+  "decision": "poc_paints_wezterm_font_via_cpu_composite_not_atlas",
+  "rationale": "wezterm-font now compiles in the GPUI graph (ADR 0003). The wezterm-gui glyph atlas lives in window/ textures + glium; that cannot move into GPUI without a custom Element and GPU atlas. For the POC, rasterize with LoadedFont, composite a viewport RGBA buffer, paint with Window::paint_image. Consolas GPUI text remains the fallback if FontConfiguration or rasterize fails. Not a window/ cutover."
+}

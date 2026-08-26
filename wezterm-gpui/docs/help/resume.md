@@ -21,7 +21,7 @@ target\debug\wezterm.exe gpui --hello
 
 `wezterm-gpui` is **not** a member of the root WezTerm workspace (`freetype` `links` conflict). Do not use `cargo check -p wezterm-gpui` from the repo root.
 
-`--hello` is the button smoke window. Default is the app chrome shell (tabs + **mux LocalPane cmd.exe** + Ctrl+Shift+P palette + confirm/prompt dialogs). Paint is GPUI Consolas text, not wezterm-gui glyphs. `wezterm-font` is in the graph (`sys-freetype`); glyph atlas not wired.
+`--hello` is the button smoke window. Default is the app chrome shell (tabs + **mux LocalPane cmd.exe** + Ctrl+Shift+P palette + confirm/prompt dialogs). Paint is wezterm-font glyph sprites (`glyph_paint.rs`) with Consolas GPUI text as fallback. After the first PTY size, window resize rewraps the display only (no ConPTY). Status `pty` vs `view` and `colfill=`. Not the wezterm-gui glyph atlas.
 
 Also check default fonts after `wezterm-font` feature edits:
 

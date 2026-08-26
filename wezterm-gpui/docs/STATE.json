@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-26T21:20:00Z",
+  "updated": "2026-08-26T23:50:00Z",
   "status": "in_progress",
-  "current_phase": "gpui-owns-freetype",
+  "current_phase": "poc-chrome",
   "next": [
     {
       "id": "user-try-mux-cmd-exe",
-      "action": "User try mux LocalDomain cmd.exe in the app shell (type, Ctrl+T new tab, resize). Confirm it is a real cmd.exe prompt. Then cell-paint Element using wezterm-font, charselect, or palette keyboard polish.",
+      "action": "Resize try succeeded 2026-08-26 (decision 013). Next smallest chrome: character selector overlay or palette keyboard polish. GPU atlas Element later. Do not start window/ cutover unless asked.",
       "blocked_by": []
     },
     {
@@ -55,7 +55,7 @@
     {
       "id": "poc-chrome",
       "status": "in_progress",
-      "notes": "Chrome still evolving. Confirm/prompt done. Mux LocalPane cmd.exe text paint. Next after user try: charselect, palette keyboard, or glyph Element."
+      "notes": "Chrome still evolving. Confirm/prompt done. Mux LocalPane cmd.exe user-tried. Paint is wezterm-font sprite cache. Live resize is display-only after first PTY size (decision 013); user confirmed no cursor-column junk 2026-08-26. Next: charselect or palette keyboard."
     },
     {
       "id": "live-pty",
@@ -70,7 +70,12 @@
     {
       "id": "gpui-owns-freetype",
       "status": "done",
-      "notes": "wezterm-font feature sys-freetype + gpui-freetype bindgen shim + harfbuzz sys-freetype headers. GPUI graph: only freetype-sys 0.20.1. native-fontconfig off. cargo check --manifest-path wezterm-gpui/Cargo.toml and cargo check -p wezterm-font (vendored default) green. Glyph Element not wired. ABI vs freetype-sys unproven at runtime."
+      "notes": "wezterm-font feature sys-freetype + gpui-freetype bindgen shim + harfbuzz sys-freetype headers. GPUI graph: only freetype-sys 0.20.1. native-fontconfig off. Glyph paint now wired (CPU composite); GPU atlas Element still pending."
+    },
+    {
+      "id": "glyph-cpu-composite",
+      "status": "done",
+      "notes": "LoadedFont shape+rasterize. First paint was a viewport bitmap (black on shrink-then-grow). Now cached per-glyph RenderImages + cell quads. User tried cmd.exe 2026-08-26. vendor-jetbrains required. Not the wezterm-gui glyph atlas."
     },
     {
       "id": "window-cutover",
@@ -80,7 +85,7 @@
     {
       "id": "terminal-element",
       "status": "pending",
-      "notes": "custom GPUI Element for glyph atlas — wezterm-font now compiles in the GPUI graph (sys-freetype); paint still Consolas text"
+      "notes": "GPU glyph atlas as a custom GPUI Element. POC currently CPU-composites wezterm-font bitmaps into one RenderImage per frame."
     },
     {
       "id": "delete-old-ui",
@@ -146,6 +151,36 @@
       "rationale": "Single links=freetype owner in the GPUI graph is freetype-sys. wezterm-gui keeps vendored deps/freetype. Isolated workspaces stay.",
       "record": "docs/decisions/008-gpui-owns-freetype.json",
       "adr": "docs/adr/0003-gpui-owns-freetype.md"
+    },
+    {
+      "at": "2026-08-26T21:40:00Z",
+      "decision": "poc_paints_wezterm_font_via_cpu_composite_not_atlas",
+      "rationale": "Prove wezterm-font+freetype-sys at paint time without window/ GPU atlas. Rasterize, composite RGBA, GPUI paint_image. Consolas fallback.",
+      "record": "docs/decisions/009-cpu-composite-wezterm-font-glyphs.json"
+    },
+    {
+      "at": "2026-08-26T22:15:00Z",
+      "decision": "poc_paints_wezterm_font_as_cached_sprites",
+      "rationale": "Viewport-sized RenderImage per frame exhausted/corrupted GPUI sprite atlas on shrink-then-grow (whole shell black). Cached per-glyph sprites + quads.",
+      "record": "docs/decisions/010-gpui-glyph-sprites-not-viewport-bitmap.json"
+    },
+    {
+      "at": "2026-08-26T22:35:00Z",
+      "decision": "debounce_pty_resize_off_live_drag",
+      "rationale": "Wiggle-resize after typing smeared D/a down the cursor column. Cause: LocalPane::resize (ConPTY) on every TermScreen prepaint when floor(pixels/cell) changed. GPUI windows are free-pixel; wezterm-gui snaps to cell increments. Debounce PTY resize 100ms after the cell grid stops changing.",
+      "record": "docs/decisions/011-debounce-conpty-resize.json"
+    },
+    {
+      "at": "2026-08-26T22:45:00Z",
+      "decision": "never_clamp_zero_bounds_to_min_grid",
+      "rationale": "Debounce retry still smeared D/a. 0×0 GPUI bounds were clamped to 8×2 then grown; ConPTY rains the cursor column. Skip sub-2-cell bounds; cell-aligned pixels; clip sprites.",
+      "record": "docs/decisions/012-skip-degenerate-conpty-size.json"
+    },
+    {
+      "at": "2026-08-26T23:45:00Z",
+      "decision": "gpui_live_resize_skips_conpty",
+      "rationale": "User: few pixels of width changed colfill 16→12 and junk remained. One ConPTY col change is enough. After first PTY size, live resize is terminal.resize only (Pane::resize_display). wezterm-gui still uses resize().",
+      "record": "docs/decisions/013-display-rewrap-without-conpty.json"
     }
   ],
   "constraints": [
@@ -202,13 +237,13 @@
       "status": "poc_text_paint",
       "legacy": "mux LocalDomain::spawn_pane + LocalPane (wezterm-gui uses this, then glyph-paints)",
       "gpui": "wezterm-gpui/src/mux_host.rs + term_pane.rs",
-      "e2e": "cargo check + cargo build green; cmd.exe via mux LocalDomain; GPUI Consolas text; not yet user-tried"
+      "e2e": "user-tried 2026-08-26 cmd.exe + wezterm-font sprites; ConPTY live-resize junk gone after display-only rewrap (decision 013); colfill 1 wide / 7 narrow is wrap occupancy not smear"
     },
     "wezterm_font_sys_freetype": {
-      "status": "compile_in_graph",
+      "status": "wired_cpu_composite",
       "legacy": "wezterm-font + deps/freetype + harfbuzz vendored FT",
-      "gpui": "wezterm-font features sys-freetype; deps/freetype-from-sys; harfbuzz sys-freetype; freetype-sys 0.20.1",
-      "e2e": "cargo check --manifest-path wezterm-gpui/Cargo.toml and cargo check -p wezterm-font green; not used for paint yet"
+      "gpui": "wezterm-gpui/src/glyph_paint.rs; wezterm-font features sys-freetype + vendor-jetbrains; deps/freetype-from-sys; harfbuzz sys-freetype; freetype-sys 0.20.1",
+      "e2e": "user-tried 2026-08-26; vendor-jetbrains required; viewport bitmap black on shrink-grow; sprite cache + display-only resize user-ok (no D/a column)"
     }
   },
   "findings": [
@@ -286,6 +321,46 @@
       "at": "2026-08-26T21:20:00Z",
       "id": "wezterm_font_sys_freetype_check_green",
       "detail": "cargo check --manifest-path wezterm-gpui/Cargo.toml green with wezterm-font sys-freetype. cargo check -p wezterm-font green with default vendored-freetype. Glyph atlas not wired. COLR/FT_Error_String ABI vs freetype-sys 0.20 unproven at runtime."
+    },
+    {
+      "at": "2026-08-26T21:40:00Z",
+      "id": "wezterm_font_cpu_composite_check_green",
+      "detail": "glyph_paint.rs shapes with LoadedFont::blocking_shape, rasterizes, composites a viewport, paints via GPUI canvas + paint_image. cargo check and cargo build --manifest-path wezterm-gpui/Cargo.toml green (freetype-sys symbols linked). Fallback to Consolas if FontConfiguration or rasterize fails. Not the GPU atlas. COLR/FT_Error_String still unproven until a user run."
+    },
+    {
+      "at": "2026-08-26T22:05:00Z",
+      "id": "sys_freetype_needs_vendor_jetbrains",
+      "detail": "User try 2026-08-26: status bar Consolas GPUI text (glyph paint unavailable). stderr: obtaining metrics for font_size=12 @ dpi 96: metrics_for_idx: there is no font with idx=0. Cause: wezterm-font default-features=false features=sys-freetype omitted vendor-jetbrains. Default config family is JetBrains Mono; GDI had no match; built-in TTF bytes were cfg'd out. Fix: features = [sys-freetype, vendor-jetbrains]. cargo check and cargo build green."
+    },
+    {
+      "at": "2026-08-26T22:15:00Z",
+      "id": "viewport_bitmap_black_on_shrink_grow",
+      "detail": "User try 2026-08-26: shrink then grow turned the whole shell black (chrome + pane). Cause: each frame uploaded a viewport-sized RenderImage to GPUI's sprite atlas and dropped the previous one. Fix: cached per-glyph sprites + paint_quad cell backgrounds (decision 010)."
+    },
+    {
+      "at": "2026-08-26T22:20:00Z",
+      "id": "canvas_fnonce_blank_on_resize",
+      "detail": "Sprite cache did not fix shrink-then-grow black pane. GPUI canvas() paint/prepaint are FnOnce and taken on first paint; a resize can repaint without rebuilding the tree, so the pane draws nothing. Replaced canvas with TermScreen Element that paints every frame and resizes the PTY from element bounds."
+    },
+    {
+      "at": "2026-08-26T22:35:00Z",
+      "id": "conpty_resize_smears_cursor_column",
+      "detail": "User screenshot 2026-08-26 182718: after typing a and wiggling the window, a vertical column of D/a at the cursor with the green block cursor at the bottom; dir listing above still visible. Not a black atlas. TermScreen prepaint called LocalPane::resize whenever floor(pane_px/cell) changed. ConPTY ResizePseudoConsole rewrites the screen; oscillating rows smears the cursor cell down the column. wezterm-gui applies live resize too but Win32 resize increments snap to cell size so this is harder to trigger. Fix: first PTY size applies immediately; later grid changes debounce 100ms (decision 011)."
+    },
+    {
+      "at": "2026-08-26T22:45:00Z",
+      "id": "debounce_did_not_stop_cursor_column_junk",
+      "detail": "User retry 2026-08-26 after decision 011: same D/a column. Debounce is not sufficient. Likely 0×0/sub-cell prepaint bounds clamped to 8×2 (min) then grown to the real grid, which is a huge ConPTY row increase and rains the cursor cell even once. Also possible: trail is paint (colfill on the status bar distinguishes). Follow-up is decision 012."
+    },
+    {
+      "at": "2026-08-26T23:45:00Z",
+      "id": "one_col_conpty_resize_smears",
+      "detail": "User after decision 012: new tab colfill=2; dir /a at 84x20 colfill=16; increase width a few pixels colfill=12; decrease width colfill=16; slight increase colfill=7; vertical junk still visible. So the trail is in the cell buffer and a single committed column change is enough. ResizePseudoConsole reflow, not paint smear and not 0×0 clamp. Follow-up: display-only rewrap (decision 013)."
+    },
+    {
+      "at": "2026-08-26T23:50:00Z",
+      "id": "display_rewrap_no_conpty_user_ok",
+      "detail": "User retry 2026-08-26 after decision 013: junk gone. colfill 1 on a very wide window, 7 on a small window — occupancy of the cursor column by wrapped listing/banner, not a smear. PTY size stays at first layout; new cmd.exe output still wraps at that size."
     }
   ],
   "blockers": [],
@@ -297,7 +372,7 @@
     "min_usable_chrome": "yes_not_a_terminal",
     "user_try": "yes",
     "live_pty_text_paint": "superseded_by_mux",
-    "mux_cmd_exe_text_paint": "compile_yes_not_user_tried",
-    "wezterm_font_sys_freetype": "compile_yes_not_used_for_paint"
+    "mux_cmd_exe_text_paint": "user_tried",
+    "wezterm_font_sys_freetype": "sprite_cache_display_rewrap_user_ok"
   }
 }

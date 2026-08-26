@@ -43,10 +43,12 @@ This is **not** a rewrite of the terminal renderer. Dual-stack is expected. POC 
 | App chrome shell | Done; **user-tried and approved** (`target\debug\wezterm.exe gpui`). TitleBar + TabBar + palette overlay. |
 | Confirm / prompt dialog | Done; gpui-component `AlertDialog` + `Dialog`+`Input`. Close tab / last-tab-as-quit / Ctrl+Q. |
 | Live PTY in chrome | Superseded by mux `LocalPane` (same crates, homemade host). |
-| mux LocalDomain cmd.exe | Done compile+build (`cargo check` / `cargo build --manifest-path wezterm-gpui/Cargo.toml`). **Not yet user-tried.** Spawn is `LocalDomain::spawn_pane` + `%ComSpec%`/`cmd.exe`, same host as wezterm-gui. Paint is still Consolas GPUI text (not glyph atlas). |
-| GPUI-owned FreeType | Done compile. Isolated graph uses only `freetype-sys` 0.20.1. `wezterm-font` path-dep with `sys-freetype` (bindgen via `deps/freetype-from-sys`). wezterm-gui still vendors `deps/freetype`. Glyph atlas Element **not** wired. |
+| mux LocalDomain cmd.exe | Done compile+build. **Not yet user-tried.** Spawn is `LocalDomain::spawn_pane` + `%ComSpec%`/`cmd.exe`. |
+| GPUI-owned FreeType | Done compile. Isolated graph uses only `freetype-sys` 0.20.1. `wezterm-font` path-dep with `sys-freetype`. wezterm-gui still vendors `deps/freetype`. |
+| wezterm-font cell paint | Done. User-tried 2026-08-26 (cmd.exe + JetBrains). Full-pane bitmap went black on shrink-then-grow; paint is now cached glyph sprites + quads. Consolas fallback if init fails. **Not the wezterm-gui GPU atlas.** |
+| ConPTY live resize | Done. User-tried 2026-08-26: after decision 013 (display rewrap, no `ResizePseudoConsole` after first size) the vertical D/a column is gone. `colfill` 1 (wide) to 7 (narrow) is wrap occupancy. New cmd.exe output still wraps at the first PTY size. |
 
-`go_nogo`: in-process embed = **no**. Continue POC = **yes** (isolated workspace). Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe text paint = **compile yes, not user-tried**. `wezterm-font` in GPUI graph = **compile yes**. Glyph atlas Element = **not started**.
+`go_nogo`: in-process embed = **no**. Continue POC = **yes** (isolated workspace). Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. `wezterm-font` paint = **sprite cache + display-only live resize, user-ok**. Glyph atlas Element = **not started**.
 
 Pins:
 
@@ -58,17 +60,17 @@ Pins:
 
 ## Next steps (pick with the user unless they already said)
 
-Default `wezterm gpui` now hosts **cmd.exe** (or `%ComSpec%`) through **mux `LocalDomain`**, the same module wezterm-gui uses for a local pane. Paint path is still monospaced GPUI text, **not** wezterm-gui glyphs. `wezterm-font` **compiles** in this graph against GPUI's FreeType; it is not used to paint yet.
+Default `wezterm gpui` now hosts **cmd.exe** (or `%ComSpec%`) through **mux `LocalDomain`**, the same module wezterm-gui uses for a local pane. Paint path is **wezterm-font glyph sprites** (cached GPUI `paint_image` + cell quads), with Consolas text as fallback. Not the wezterm-gui glyph atlas.
 
 Do **not** start a `window/` cutover unless the user explicitly asks.
 
 Reasonable continuations, smallest first:
 
-1. **User try** mux cmd.exe (`target\debug\wezterm.exe gpui`). Type in the pane, Ctrl+T new tab, resize. Confirm it is a real cmd.exe prompt, not a sample.
-2. After that: character selector overlay, palette keyboard polish, or a custom GPUI `Element` that calls `wezterm-font` (now linkable).
+1. Character selector overlay or palette keyboard polish. GPU atlas Element is a later slice.
+2. Optional later: sync ConPTY to the window on a committed resize (mouse-up), without live-drag `ResizePseudoConsole`.
 3. **Only if asked:** windowing cutover (replace `window/` with `gpui_platform`). Multi-quarter; huge blast radius.
 
-If the user just says “continue” after a successful cmd.exe try: pick the next smallest chrome or cell-paint improvement they want. Do not start (3).
+If the user just says “continue”: pick (1). Do not start (3).
 
 ---
 
@@ -82,7 +84,7 @@ WezTerm has **three** UI layers:
 | Box model chrome | `wezterm-gui/src/termwindow/box_model.rs` + fancy tab bar, window buttons, `Modal`s | Natural gpui-component target |
 | Box-model modals | `palette.rs`, `charselect.rs`, `paneselect.rs` | First incremental replacements (sibling windows today) |
 | Termwiz overlays | `wezterm-gui/src/overlay/` (launcher, copy, debug, confirm, …) | Dialog/Input (confirm+prompt POC done; rest later) |
-| Terminal cells | glyph cache, glium + optional wgpu 25 | Custom GPUI `Element` later. **POC now:** mux `LocalPane` (cmd.exe) + Consolas text in `term_pane.rs` |
+| Terminal cells | glyph cache, glium + optional wgpu 25 | Custom GPUI `Element` later. **POC now:** mux `LocalPane` (cmd.exe) + wezterm-font sprites in `glyph_paint.rs` |
 
 `use_box_model_render` is an experimental pane paint path. Ignore it as a migration vehicle.
 
@@ -105,7 +107,8 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
   src/palette.rs                 # Input + filtered hardcoded commands (overlay card)
   src/confirm.rs                 # AlertDialog confirm + Dialog+Input line prompt
   src/mux_host.rs                # config + Mux + LocalDomain init; spawn cmd.exe
-  src/term_pane.rs               # mux LocalPane; GPUI text paint (not glyph atlas)
+  src/term_pane.rs               # mux LocalPane; wezterm-font paint or Consolas fallback
+  src/glyph_paint.rs             # LoadedFont rasterize → cached sprites + quads
   docs/
     HANDOFF.md                   # this file
     STATE.json                   # live phase/next/pins/findings (machine)
@@ -163,9 +166,10 @@ Binary lookup for `wezterm gpui`: env `WEZTERM_GPUI`, then next to `wezterm.exe`
 4. **Unpinned Zed git vs gpui-component git** will drift. After a successful compile, copy SHAs into `STATE.json` `pins` and keep `Cargo.lock`.
 5. First GPUI resolve is huge (~844 crates). Incremental `cargo check` after that is fast.
 6. **Dialog builders are `Fn`**, re-run each render. Capture titles/callbacks via `Clone`/`Rc`. `Dialog` does not auto-footer from `button_props`; `AlertDialog` does. Prompt uses `DialogFooter` + `DialogClose` + `DialogAction`.
-7. **Path-dep `mux` is OK** from the isolated workspace (pulls config/lua). Path-dep **`wezterm-font` with `sys-freetype` only** (ADR 0003). Still do **not** path-dep `wezterm-gui` or `window`. Mux PTY threads use `promise::spawn`; GPUI owns the native loop, so the POC runs `promise::spawn::SimpleExecutor` on a side thread — not `window/`'s spawn queue.
+7. **Path-dep `mux` is OK** from the isolated workspace (pulls config/lua). Path-dep **`wezterm-font` with `sys-freetype` + `vendor-jetbrains`** (ADR 0003). `sys-freetype` alone has no bundled faces; default config is JetBrains Mono, so paint then fails with `metrics_for_idx: there is no font with idx=0` and falls back to Consolas. Still do **not** path-dep `wezterm-gui` or `window`. Mux PTY threads use `promise::spawn`; GPUI owns the native loop, so the POC runs `promise::spawn::SimpleExecutor` on a side thread — not `window/`'s spawn queue.
 8. **HarfBuzz `workspace = true` + `default-features = false` is ignored.** `wezterm-font` must path-dep `deps/harfbuzz` with `default-features = false` or vendored FT re-enters the GPUI graph.
 9. **Unix `fontconfig` `links`** — WezTerm `deps/fontconfig` vs GPUI `yeslogic-fontconfig-sys`. Keep `native-fontconfig` off in wezterm-gpui.
+10. **Do not call `LocalPane::resize` (ConPTY) on live GPUI drag.** A few pixels of width is one column; `ResizePseudoConsole` then smears the cursor column (user: 84x20 `dir` colfill 16→12). wezterm-gui mostly avoids this via Win32 resize increments. POC: first stable size still resizes the PTY; later changes are `Pane::resize_display` (terminal rewrap only, decision 013). Never clamp 0×0 up to 8×2 (decision 012). Status `pty` vs `view` and `colfill=`.
 
 ---
 

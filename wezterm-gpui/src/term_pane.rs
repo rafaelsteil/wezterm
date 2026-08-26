@@ -1,20 +1,30 @@
-//! Mux `LocalPane` (same host as wezterm-gui), painted as monospaced GPUI text.
+//! Mux `LocalPane` (same host as wezterm-gui).
 //!
 //! Spawn goes through `mux::domain::LocalDomain::spawn_pane` → ConPTY +
-//! `wezterm-term` inside `LocalPane`. Not a sample/demo shell. Not the
-//! wezterm-gui glyph atlas.
+//! `wezterm-term` inside `LocalPane`. Paint prefers wezterm-font sprites
+//! (cached `paint_image` + cell quads). Consolas GPUI text is the fallback
+//! if FreeType/shaper init fails. Not the wezterm-gui glyph atlas.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui::*;
 use gpui_component::StyledExt;
 use mux::pane::{Pane, PaneId};
 use mux::{Mux, MuxNotification};
-use wezterm_term::{KeyCode, KeyModifiers, TerminalSize};
+use wezterm_term::color::ColorPalette;
+use wezterm_term::{KeyCode, KeyModifiers, Line, TerminalSize};
+
+use crate::glyph_paint::GlyphPainter;
 
 const DEFAULT_ROWS: usize = 24;
 const DEFAULT_COLS: usize = 80;
+/// ConPTY rewrites the screen on every `ResizePseudoConsole`. GPUI can also
+/// feed 0×0 (or sub-cell) bounds during live drag; clamping those up to 8×2
+/// then growing back smears the cursor column. Wait until the cell grid is
+/// stable, and never apply a degenerate size.
+const PTY_RESIZE_DEBOUNCE: Duration = Duration::from_millis(200);
 
 struct LiveMux {
     pane: Arc<dyn Pane>,
@@ -24,24 +34,91 @@ struct LiveMux {
 pub struct TermPane {
     live: Result<LiveMux, String>,
     font_px: f32,
+    painter: Option<GlyphPainter>,
+    pending_resize: Option<TerminalSize>,
+    /// Bumped when the pending cell grid changes so in-flight debounce tasks no-op.
+    resize_gen: u64,
+    did_pty_resize: bool,
+    pty_cols: usize,
+    pty_rows: usize,
 }
 
 impl TermPane {
     pub fn spawn(font_px: f32, cx: &mut Context<Self>) -> Self {
+        let _ = crate::mux_host::ensure_init();
+        let painter = match GlyphPainter::new() {
+            Ok(p) => Some(p),
+            Err(err) => {
+                eprintln!("wezterm-gpui wezterm-font init: {err:#}");
+                None
+            }
+        };
         match spawn_live(cx) {
             Ok(live) => Self {
                 live: Ok(live),
                 font_px,
+                painter,
+                pending_resize: None,
+                resize_gen: 0,
+                did_pty_resize: false,
+                pty_cols: DEFAULT_COLS,
+                pty_rows: DEFAULT_ROWS,
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
                 font_px,
+                painter,
+                pending_resize: None,
+                resize_gen: 0,
+                did_pty_resize: false,
+                pty_cols: DEFAULT_COLS,
+                pty_rows: DEFAULT_ROWS,
             },
         }
     }
 
     pub fn set_font_px(&mut self, font_px: f32) {
         self.font_px = font_px;
+        if let Some(painter) = &mut self.painter {
+            painter.sync_font_px(font_px);
+        }
+    }
+
+    pub fn paint_mode(&self) -> &'static str {
+        if self.painter.is_some() {
+            "wezterm-font glyphs (sprite cache)"
+        } else {
+            "Consolas GPUI text (glyph paint unavailable)"
+        }
+    }
+
+    pub fn status_line(&self) -> String {
+        let mode = self.paint_mode();
+        let Ok(live) = &self.live else {
+            return mode.to_string();
+        };
+        let dims = live.pane.get_dimensions();
+        let (cw, ch) = self.cell_px();
+        let fill = self.cursor_column_filled_rows();
+        format!(
+            "{mode}  pty {}×{}  view {}×{}  {cw:.1}×{ch:.1}px  colfill={fill}",
+            self.pty_cols, self.pty_rows, dims.cols, dims.viewport_rows
+        )
+    }
+
+    fn cursor_column_filled_rows(&self) -> usize {
+        let (lines, cursor, _) = self.visible_lines();
+        let Some((_, col)) = cursor else {
+            return 0;
+        };
+        lines
+            .iter()
+            .filter(|line| {
+                line.get_cell(col)
+                    .map(|c| c.str().chars().any(|ch| ch != ' ' && ch != '\0'))
+                    .unwrap_or(false)
+            })
+            .count()
     }
 
     pub fn title(&self) -> String {
@@ -76,32 +153,108 @@ impl TermPane {
         }
     }
 
-    pub fn resize_to_pixels(&mut self, width: Pixels, height: Pixels) {
+    fn cell_px(&self) -> (f32, f32) {
+        if let Some(painter) = &self.painter {
+            if let Ok(size) = painter.cell_size() {
+                return (size.width, size.height);
+            }
+        }
+        (self.font_px * 0.62, self.font_px * 1.28)
+    }
+
+    pub fn resize_to_pixels(&mut self, width: Pixels, height: Pixels, cx: &mut Context<Self>) {
+        let Some(size) = self.size_from_pixels(width, height) else {
+            return;
+        };
+        let Ok(live) = self.live.as_ref() else {
+            return;
+        };
+        let dims = live.pane.get_dimensions();
+        if dims.cols == size.cols && dims.viewport_rows == size.rows {
+            if self.pending_resize.take().is_some() {
+                self.resize_gen += 1;
+            }
+            return;
+        }
+        // After the first ConPTY size, only rewrap the emulator. A few pixels of
+        // width is one column; ResizePseudoConsole then rains the cursor cell
+        // (colfill jumps, vertical D/a). wezterm-gui avoids this mostly via
+        // Win32 resize increments; GPUI windows are free-pixel.
+        if self.did_pty_resize {
+            let _ = live.pane.resize_display(size);
+            return;
+        }
+        if let Some(pending) = self.pending_resize {
+            if pending.cols == size.cols && pending.rows == size.rows {
+                return;
+            }
+        }
+        self.pending_resize = Some(size);
+        self.resize_gen += 1;
+        let epoch = self.resize_gen;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(PTY_RESIZE_DEBOUNCE).await;
+            this.update(cx, |term, cx| {
+                if term.resize_gen == epoch {
+                    term.flush_pending_resize();
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn size_from_pixels(&self, width: Pixels, height: Pixels) -> Option<TerminalSize> {
+        let (cell_w, cell_h) = self.cell_px();
+        if cell_w < 1. || cell_h < 1. {
+            return None;
+        }
+        let width = f32::from(width);
+        let height = f32::from(height);
+        // Windows/GPUI can report 0×0 mid-drag. Do not clamp that up to 8×2:
+        // ConPTY would wrap the screen, then growing back rains the cursor cell.
+        if width < cell_w * 2. || height < cell_h * 2. {
+            return None;
+        }
+        let cols = (width / cell_w).floor() as usize;
+        let rows = (height / cell_h).floor() as usize;
+        if cols < 2 || rows < 2 {
+            return None;
+        }
+        let cols = cols.min(400);
+        let rows = rows.min(200);
+        Some(TerminalSize {
+            rows,
+            cols,
+            pixel_width: (cols as f32 * cell_w).round() as usize,
+            pixel_height: (rows as f32 * cell_h).round() as usize,
+            dpi: 96,
+        })
+    }
+
+    fn flush_pending_resize(&mut self) {
+        let Some(size) = self.pending_resize.take() else {
+            return;
+        };
         let Ok(live) = self.live.as_mut() else {
             return;
         };
-        let cell_w = self.font_px * 0.62;
-        let cell_h = self.font_px * 1.28;
-        if cell_w < 1. || cell_h < 1. {
-            return;
-        }
-        let cols = ((f32::from(width) / cell_w).floor() as usize).clamp(8, 400);
-        let rows = ((f32::from(height) / cell_h).floor() as usize).clamp(2, 200);
         let dims = live.pane.get_dimensions();
-        if dims.cols == cols && dims.viewport_rows == rows {
+        if dims.cols == size.cols && dims.viewport_rows == size.rows {
             return;
         }
-        let size = TerminalSize {
-            rows,
-            cols,
-            pixel_width: f32::from(width) as usize,
-            pixel_height: f32::from(height) as usize,
-            dpi: 96,
-        };
+        eprintln!(
+            "wezterm-gpui pty resize {}x{} -> {}x{} ({}x{} px)",
+            dims.cols, dims.viewport_rows, size.cols, size.rows, size.pixel_width, size.pixel_height
+        );
         let _ = live.pane.resize(size);
+        self.did_pty_resize = true;
+        self.pty_cols = size.cols;
+        self.pty_rows = size.rows;
     }
 
-    fn visible_text(&self) -> (Vec<String>, Option<(usize, usize)>, u32, u32) {
+    fn visible_lines(&self) -> (Vec<Line>, Option<(usize, usize)>, ColorPalette) {
         match &self.live {
             Ok(live) => {
                 let dims = live.pane.get_dimensions();
@@ -110,16 +263,42 @@ impl TermPane {
                 let top = dims.physical_top;
                 let end = top.saturating_add(dims.viewport_rows as isize);
                 let (first, lines) = live.pane.get_lines(top..end);
-                let text: Vec<String> = lines.iter().map(|line| line.as_str().into_owned()).collect();
                 let vis_row = usize::try_from(cursor.y.saturating_sub(first)).ok();
-                let vis_col = cursor.x;
+                (lines, vis_row.map(|row| (row, cursor.x)), pal)
+            }
+            Err(_) => (vec![], None, ColorPalette::default()),
+        }
+    }
+
+    fn visible_text(&self) -> (Vec<String>, Option<(usize, usize)>, u32, u32) {
+        match &self.live {
+            Ok(_) => {
+                let (lines, cursor, pal) = self.visible_lines();
+                let text: Vec<String> = lines.iter().map(|line| line.as_str().into_owned()).collect();
                 let (fr, fg, fb, _) = pal.foreground.as_rgba_u8();
                 let (br, bg, bb, _) = pal.background.as_rgba_u8();
                 let fg = u32::from_be_bytes([0, fr, fg, fb]);
                 let bg = u32::from_be_bytes([0, br, bg, bb]);
-                (text, vis_row.map(|row| (row, vis_col)), fg, bg)
+                (text, cursor, fg, bg)
             }
             Err(err) => (vec![err.clone()], None, 0xc8c8c8, 0x0c0c0c),
+        }
+    }
+
+    pub(crate) fn try_glyph_paint(&mut self) -> Option<crate::glyph_paint::TermPaint> {
+        if self.painter.is_none() || self.live.is_err() {
+            return None;
+        }
+        let (lines, cursor, pal) = self.visible_lines();
+        let painter = self.painter.as_mut()?;
+        painter.sync_font_px(self.font_px);
+        match painter.layout(&lines, cursor, &pal) {
+            Ok(paint) => Some(paint),
+            Err(err) => {
+                eprintln!("wezterm-gpui glyph paint: {err:#}");
+                self.painter = None;
+                None
+            }
         }
     }
 }
@@ -254,12 +433,18 @@ fn map_keystroke(ks: &Keystroke) -> Option<(KeyCode, KeyModifiers)> {
 }
 
 impl Render for TermPane {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let bounds = window.viewport_size();
-        // Title + tabs + status are ~92px; keep a floor so we never resize to 0.
-        let pane_h = (f32::from(bounds.height) - 92.).max(48.);
-        let pane_w = f32::from(bounds.width).max(64.);
-        self.resize_to_pixels(px(pane_w), px(pane_h));
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.painter.is_some() {
+            return div()
+                .id("term-pane")
+                .size_full()
+                .min_h_0()
+                .overflow_hidden()
+                .child(TermScreen {
+                    term: cx.entity(),
+                })
+                .into_any_element();
+        }
 
         let font_px = self.font_px;
         let (lines, cursor, fg, bg) = self.visible_text();
@@ -293,6 +478,82 @@ impl Render for TermPane {
                         })
                 },
             )))
+            .into_any_element()
+    }
+}
+
+/// Persistent GPUI element: `canvas()` is FnOnce and goes blank if a resize
+/// paints without rebuilding the tree.
+struct TermScreen {
+    term: Entity<TermPane>,
+}
+
+impl IntoElement for TermScreen {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl Element for TermScreen {
+    type RequestLayoutState = Style;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        Some("term-screen".into())
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let mut style = Style::default();
+        style.size = gpui::Size::full();
+        style.overflow = point(Overflow::Hidden, Overflow::Hidden);
+        let layout_id = window.request_layout(style.clone(), [], cx);
+        (layout_id, style)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _request_layout: &mut Style,
+        _window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.term.update(cx, |term, cx| {
+            term.resize_to_pixels(bounds.size.width, bounds.size.height, cx);
+        });
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        style: &mut Style,
+        _prepaint: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        style.paint(bounds, window, cx, |window, cx| {
+            let paint = self.term.update(cx, |term, _| term.try_glyph_paint());
+            if let Some(paint) = paint {
+                crate::glyph_paint::paint_term(window, bounds, &paint);
+            } else {
+                window.paint_quad(fill(bounds, rgb(0x0c0c0c)));
+            }
+        });
     }
 }
 

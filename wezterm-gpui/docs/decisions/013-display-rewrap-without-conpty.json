@@ -1,0 +1,6 @@
+{
+  "id": "013-display-rewrap-without-conpty",
+  "at": "2026-08-26T23:45:00Z",
+  "decision": "gpui_live_resize_skips_conpty",
+  "rationale": "User: new tab colfill=2; dir /a at 84x20 colfill=16; a few pixels wider colfill=12; junk still visible. So one committed column change is enough; debounce/skip-zero cannot help. ResizePseudoConsole reflows cmd.exe and smears the cursor column. wezterm-gui mostly avoids casual pixel-level col changes via Win32 resize increments. GPUI windows are free-pixel. POC: first stable pane size still calls LocalPane::resize (PTY+terminal). Later live resizes call new Pane::resize_display (terminal.resize only). wezterm-gui still uses resize() only. Status shows pty vs view. New cmd.exe output still wraps at the PTY size until a later full sync exists."
+}

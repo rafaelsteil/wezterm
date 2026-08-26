@@ -4,8 +4,8 @@
 //! `wezterm-term` inside `LocalPane`). This module uses that same path so the
 //! GPUI chrome is not a second, homemade PTY host.
 //!
-//! Still not `wezterm-gui`, `window/`, or the glyph atlas. Paint stays in
-//! `term_pane.rs` as monospaced GPUI text.
+//! Still not `wezterm-gui` or `window/`. Paint is wezterm-font sprites
+//! in `glyph_paint.rs` (Consolas text fallback in `term_pane.rs`).
 
 use std::ffi::OsString;
 use std::sync::{Arc, OnceLock};

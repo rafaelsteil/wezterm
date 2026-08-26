@@ -1,0 +1,6 @@
+{
+  "id": "012-skip-degenerate-conpty-size",
+  "at": "2026-08-26T22:45:00Z",
+  "decision": "never_clamp_zero_bounds_to_min_grid",
+  "rationale": "User retry after 100ms debounce: same vertical D/a column. Debounce cannot explain a full-height trail from ±1 row. More likely: GPUI reports 0×0 or sub-cell bounds during live drag; size_from_pixels used clamp(8,400)/clamp(2,200), so 0×0 became 8×2, ConPTY wrapped, then the next real size grew dozens of rows and rained the cursor cell. wezterm-gui NOPs on zero dimensions and sends pixel_width/height as cols*cell_w (issue 535). Fix: ignore bounds smaller than 2 cells, never clamp upward, send cell-aligned pixel size, debounce 200ms with no immediate first apply, clip glyph sprites to the pane. Status bar shows cols×rows, cell px, and colfill (non-blank cells in the cursor column) so a retry can distinguish buffer junk from paint smear."
+}

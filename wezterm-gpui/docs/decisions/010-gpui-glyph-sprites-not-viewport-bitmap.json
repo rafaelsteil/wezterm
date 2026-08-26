@@ -1,0 +1,6 @@
+{
+  "id": "010-gpui-glyph-sprites-not-viewport-bitmap",
+  "at": "2026-08-26T22:15:00Z",
+  "decision": "poc_paints_wezterm_font_as_cached_sprites",
+  "rationale": "User try: shrink then grow the window turned the whole shell black. Cause: each frame uploaded a new viewport-sized RenderImage to GPUI's sprite atlas and dropped the previous one. Reallocating a larger tile after a smaller one can fail and take chrome text with it. Fix: cache per-glyph RenderImages (stable ImageId) and paint cell backgrounds as quads. Decision 009's CPU composite stays as history; it is not the live paint path."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "011-debounce-conpty-resize",
+  "at": "2026-08-26T22:35:00Z",
+  "decision": "debounce_pty_resize_off_live_drag",
+  "rationale": "User try: type a letter, wiggle the window a few pixels. Screenshot showed a vertical column of D/a at the cursor with the block cursor at the bottom; dir listing above stayed intact. That is ConPTY screen rewrite, not a black GPUI atlas. TermScreen prepaint called LocalPane::resize on every cell-grid change. GPUI windows are free-pixel (no wezterm-gui resize increments), so dragging across one cell boundary oscillates rows and ResizePseudoConsole smears the cursor column. Fix: apply the first pane size immediately, then debounce later PTY resizes until the computed cols/rows have been unchanged for 100ms."
+}

@@ -248,6 +248,14 @@ pub trait Pane: Downcast + Send + Sync {
     fn reader(&self) -> anyhow::Result<Option<Box<dyn std::io::Read + Send>>>;
     fn writer(&self) -> MappedMutexGuard<'_, dyn std::io::Write>;
     fn resize(&self, size: TerminalSize) -> anyhow::Result<()>;
+    /// Resize the terminal display without notifying the PTY.
+    ///
+    /// Default: same as [`Self::resize`].
+    /// `LocalPane` overrides this so a GUI can rewrap the buffer without
+    /// `ResizePseudoConsole`, which on Windows often smears the cursor column.
+    fn resize_display(&self, size: TerminalSize) -> anyhow::Result<()> {
+        self.resize(size)
+    }
     /// Called as a hint that the pane is being resized as part of
     /// a zoom-to-fill-all-the-tab-space operation.
     fn set_zoomed(&self, _zoomed: bool) {}

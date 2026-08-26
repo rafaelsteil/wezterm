@@ -8629,9 +8629,11 @@ dependencies = [
  "gpui",
  "gpui-component",
  "gpui_platform",
+ "image",
  "mux",
  "portable-pty",
  "promise",
+ "wezterm-bidi",
  "wezterm-font",
  "wezterm-term",
 ]
