@@ -7,7 +7,6 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use gpui::*;
 use gpui_component::StyledExt;
@@ -20,11 +19,6 @@ use crate::glyph_paint::GlyphPainter;
 
 const DEFAULT_ROWS: usize = 24;
 const DEFAULT_COLS: usize = 80;
-/// ConPTY rewrites the screen on every `ResizePseudoConsole`. GPUI can also
-/// feed 0×0 (or sub-cell) bounds during live drag; clamping those up to 8×2
-/// then growing back smears the cursor column. Wait until the cell grid is
-/// stable, and never apply a degenerate size.
-const PTY_RESIZE_DEBOUNCE: Duration = Duration::from_millis(200);
 
 struct LiveMux {
     pane: Arc<dyn Pane>,
@@ -35,10 +29,9 @@ pub struct TermPane {
     live: Result<LiveMux, String>,
     font_px: f32,
     painter: Option<GlyphPainter>,
-    pending_resize: Option<TerminalSize>,
-    /// Bumped when the pending cell grid changes so in-flight debounce tasks no-op.
-    resize_gen: u64,
-    did_pty_resize: bool,
+    /// First valid layout calls `Pane::resize` (PTY + terminal). Later layouts
+    /// call `resize_display` only — live `ResizePseudoConsole` smears cmd.exe.
+    pty_synced: bool,
     pty_cols: usize,
     pty_rows: usize,
 }
@@ -58,9 +51,7 @@ impl TermPane {
                 live: Ok(live),
                 font_px,
                 painter,
-                pending_resize: None,
-                resize_gen: 0,
-                did_pty_resize: false,
+                pty_synced: false,
                 pty_cols: DEFAULT_COLS,
                 pty_rows: DEFAULT_ROWS,
             },
@@ -68,9 +59,7 @@ impl TermPane {
                 live: Err(format!("{err:#}")),
                 font_px,
                 painter,
-                pending_resize: None,
-                resize_gen: 0,
-                did_pty_resize: false,
+                pty_synced: false,
                 pty_cols: DEFAULT_COLS,
                 pty_rows: DEFAULT_ROWS,
             },
@@ -98,27 +87,10 @@ impl TermPane {
             return mode.to_string();
         };
         let dims = live.pane.get_dimensions();
-        let (cw, ch) = self.cell_px();
-        let fill = self.cursor_column_filled_rows();
         format!(
-            "{mode}  pty {}×{}  view {}×{}  {cw:.1}×{ch:.1}px  colfill={fill}",
+            "{mode}  pty {}×{}  view {}×{}",
             self.pty_cols, self.pty_rows, dims.cols, dims.viewport_rows
         )
-    }
-
-    fn cursor_column_filled_rows(&self) -> usize {
-        let (lines, cursor, _) = self.visible_lines();
-        let Some((_, col)) = cursor else {
-            return 0;
-        };
-        lines
-            .iter()
-            .filter(|line| {
-                line.get_cell(col)
-                    .map(|c| c.str().chars().any(|ch| ch != ' ' && ch != '\0'))
-                    .unwrap_or(false)
-            })
-            .count()
     }
 
     pub fn title(&self) -> String {
@@ -162,47 +134,33 @@ impl TermPane {
         (self.font_px * 0.62, self.font_px * 1.28)
     }
 
-    pub fn resize_to_pixels(&mut self, width: Pixels, height: Pixels, cx: &mut Context<Self>) {
+    pub fn resize_to_pixels(&mut self, width: Pixels, height: Pixels) {
         let Some(size) = self.size_from_pixels(width, height) else {
             return;
         };
-        let Ok(live) = self.live.as_ref() else {
+        if !self.grid_differs(&size) {
             return;
+        }
+        if self.pty_synced {
+            if let Ok(live) = &self.live {
+                let _ = live.pane.resize_display(size);
+            }
+            return;
+        }
+        if let Ok(live) = &mut self.live {
+            let _ = live.pane.resize(size);
+            self.pty_synced = true;
+            self.pty_cols = size.cols;
+            self.pty_rows = size.rows;
+        }
+    }
+
+    fn grid_differs(&self, size: &TerminalSize) -> bool {
+        let Ok(live) = &self.live else {
+            return false;
         };
         let dims = live.pane.get_dimensions();
-        if dims.cols == size.cols && dims.viewport_rows == size.rows {
-            if self.pending_resize.take().is_some() {
-                self.resize_gen += 1;
-            }
-            return;
-        }
-        // After the first ConPTY size, only rewrap the emulator. A few pixels of
-        // width is one column; ResizePseudoConsole then rains the cursor cell
-        // (colfill jumps, vertical D/a). wezterm-gui avoids this mostly via
-        // Win32 resize increments; GPUI windows are free-pixel.
-        if self.did_pty_resize {
-            let _ = live.pane.resize_display(size);
-            return;
-        }
-        if let Some(pending) = self.pending_resize {
-            if pending.cols == size.cols && pending.rows == size.rows {
-                return;
-            }
-        }
-        self.pending_resize = Some(size);
-        self.resize_gen += 1;
-        let epoch = self.resize_gen;
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(PTY_RESIZE_DEBOUNCE).await;
-            this.update(cx, |term, cx| {
-                if term.resize_gen == epoch {
-                    term.flush_pending_resize();
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
+        dims.cols != size.cols || dims.viewport_rows != size.rows
     }
 
     fn size_from_pixels(&self, width: Pixels, height: Pixels) -> Option<TerminalSize> {
@@ -212,8 +170,7 @@ impl TermPane {
         }
         let width = f32::from(width);
         let height = f32::from(height);
-        // Windows/GPUI can report 0×0 mid-drag. Do not clamp that up to 8×2:
-        // ConPTY would wrap the screen, then growing back rains the cursor cell.
+        // Skip 0×0 / sub-cell GPUI bounds (live drag). Do not clamp them up.
         if width < cell_w * 2. || height < cell_h * 2. {
             return None;
         }
@@ -231,27 +188,6 @@ impl TermPane {
             pixel_height: (rows as f32 * cell_h).round() as usize,
             dpi: 96,
         })
-    }
-
-    fn flush_pending_resize(&mut self) {
-        let Some(size) = self.pending_resize.take() else {
-            return;
-        };
-        let Ok(live) = self.live.as_mut() else {
-            return;
-        };
-        let dims = live.pane.get_dimensions();
-        if dims.cols == size.cols && dims.viewport_rows == size.rows {
-            return;
-        }
-        eprintln!(
-            "wezterm-gpui pty resize {}x{} -> {}x{} ({}x{} px)",
-            dims.cols, dims.viewport_rows, size.cols, size.rows, size.pixel_width, size.pixel_height
-        );
-        let _ = live.pane.resize(size);
-        self.did_pty_resize = true;
-        self.pty_cols = size.cols;
-        self.pty_rows = size.rows;
     }
 
     fn visible_lines(&self) -> (Vec<Line>, Option<(usize, usize)>, ColorPalette) {
@@ -531,8 +467,8 @@ impl Element for TermScreen {
         _window: &mut Window,
         cx: &mut App,
     ) {
-        self.term.update(cx, |term, cx| {
-            term.resize_to_pixels(bounds.size.width, bounds.size.height, cx);
+        self.term.update(cx, |term, _cx| {
+            term.resize_to_pixels(bounds.size.width, bounds.size.height);
         });
     }
 

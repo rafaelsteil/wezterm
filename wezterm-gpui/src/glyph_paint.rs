@@ -1,11 +1,6 @@
-//! wezterm-font glyphs as cached GPUI sprites, not a full-pane bitmap.
-//!
-//! A viewport-sized `RenderImage` every frame is uploaded to GPUI's sprite
-//! atlas and dropped on the next frame. Shrink-then-grow reallocates a larger
-//! tile after freeing a smaller one; that can fail and take the whole window
-//! atlas with it (chrome + pane go black). Per-glyph images stay a few dozen
-//! pixels and keep a stable `ImageId` across resizes. Cell backgrounds are
-//! `paint_quad`. Not the wezterm-gui GPU atlas.
+//! wezterm-font glyphs as cached GPUI sprites (stable `ImageId` per glyph).
+//! Cell backgrounds are `paint_quad`. Not a viewport bitmap and not the
+//! wezterm-gui GPU atlas. See decision 010.
 
 use std::collections::HashMap;
 use std::rc::Rc;

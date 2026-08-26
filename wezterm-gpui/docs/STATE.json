@@ -1,7 +1,7 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-26T23:50:00Z",
+  "updated": "2026-08-26T23:55:00Z",
   "status": "in_progress",
   "current_phase": "poc-chrome",
   "next": [
@@ -55,7 +55,7 @@
     {
       "id": "poc-chrome",
       "status": "in_progress",
-      "notes": "Chrome still evolving. Confirm/prompt done. Mux LocalPane cmd.exe user-tried. Paint is wezterm-font sprite cache. Live resize is display-only after first PTY size (decision 013); user confirmed no cursor-column junk 2026-08-26. Next: charselect or palette keyboard."
+      "notes": "Chrome still evolving. Confirm/prompt done. Mux LocalPane cmd.exe user-tried. Paint is wezterm-font sprite cache. Live resize is display-only after first PTY size (decision 013); user confirmed no cursor-column junk 2026-08-26. Debug colfill/debounce stripped. Next: charselect or palette keyboard."
     },
     {
       "id": "live-pty",
@@ -361,6 +361,11 @@
       "at": "2026-08-26T23:50:00Z",
       "id": "display_rewrap_no_conpty_user_ok",
       "detail": "User retry 2026-08-26 after decision 013: junk gone. colfill 1 on a very wide window, 7 on a small window — occupancy of the cursor column by wrapped listing/banner, not a smear. PTY size stays at first layout; new cmd.exe output still wraps at that size."
+    },
+    {
+      "at": "2026-08-26T23:55:00Z",
+      "id": "stripped_resize_debug_after_013",
+      "detail": "Removed colfill/cell-px status, pty-resize eprintln, and 200ms first-size debounce. Live ConPTY is gone so debounce was leftover; first valid (>=2 cell) layout resizes the PTY immediately, later layouts are resize_display only."
     }
   ],
   "blockers": [],
