@@ -10,7 +10,8 @@ use config::{Dimension, DimensionContext, TabBarColors};
 use std::rc::Rc;
 use wezterm_font::LoadedFont;
 use wezterm_term::color::{ColorAttribute, ColorPalette};
-use window::{IntegratedTitleButtonAlignment, IntegratedTitleButtonStyle};
+use window::color::LinearRgba;
+use window::{IntegratedTitleButtonAlignment, IntegratedTitleButtonStyle, RectF};
 
 const X_BUTTON: &[Poly] = &[
     Poly {
@@ -55,7 +56,7 @@ impl crate::TermWindow {
         self.fancy_tab_bar.take();
     }
 
-    pub fn build_fancy_tab_bar(&self, palette: &ColorPalette) -> anyhow::Result<ComputedElement> {
+    pub fn build_fancy_tab_bar(&mut self, palette: &ColorPalette) -> anyhow::Result<ComputedElement> {
         let tab_bar_height = self.tab_bar_pixel_height()?;
         let font = self.fonts.title_font()?;
         let metrics = RenderMetrics::with_font_metrics(&font.metrics());
@@ -70,6 +71,7 @@ impl crate::TermWindow {
 
         let mut left_status = vec![];
         let mut left_eles = vec![];
+        let mut new_tab_eles = vec![];
         let mut right_eles = vec![];
         let bar_colors = ElementColors {
             border: BorderColor::default(),
@@ -296,16 +298,8 @@ impl crate::TermWindow {
             }
         };
 
-        let num_tabs: f32 = items
-            .iter()
-            .map(|item| match item.item {
-                TabBarItem::NewTabButton | TabBarItem::Tab { .. } => 1.,
-                _ => 0.,
-            })
-            .sum();
-        let max_tab_width = ((self.dimensions.pixel_width as f32 / num_tabs)
-            - (1.5 * metrics.cell_size.width as f32))
-            .max(0.);
+        let max_tab_width =
+            (self.config.tab_max_width as f32 * metrics.cell_size.width as f32).max(0.);
 
         // Reserve space for the native titlebar buttons
         if self
@@ -333,7 +327,7 @@ impl crate::TermWindow {
                     if self.config.integrated_title_button_alignment
                         == IntegratedTitleButtonAlignment::Left
                     {
-                        left_eles.push(item_to_elem(item))
+                        left_status.push(item_to_elem(item))
                     } else {
                         right_eles.push(item_to_elem(item))
                     }
@@ -353,7 +347,7 @@ impl crate::TermWindow {
                     };
                     left_eles.push(elem);
                 }
-                _ => left_eles.push(item_to_elem(item)),
+                TabBarItem::NewTabButton => new_tab_eles.push(item_to_elem(item)),
             }
         }
 
@@ -393,15 +387,32 @@ impl crate::TermWindow {
         children.push(
             Element::new(&font, ElementContent::Children(left_eles))
                 .vertical_align(VerticalAlign::Bottom)
-                .colors(bar_colors.clone())
+                .colors(ElementColors {
+                    border: BorderColor::default(),
+                    bg: LinearRgba::TRANSPARENT.into(),
+                    text: bar_colors.text.clone(),
+                })
                 .padding(BoxDimension {
                     left: left_padding,
                     right: Dimension::Cells(0.),
                     top: Dimension::Cells(0.),
                     bottom: Dimension::Cells(0.),
                 })
+                .allow_overflow(true)
                 .zindex(1),
         );
+        if !new_tab_eles.is_empty() {
+            children.push(
+                Element::new(&font, ElementContent::Children(new_tab_eles))
+                    .vertical_align(VerticalAlign::Bottom)
+                    .colors(ElementColors {
+                        border: BorderColor::default(),
+                        bg: LinearRgba::TRANSPARENT.into(),
+                        text: bar_colors.text.clone(),
+                    })
+                    .zindex(2),
+            );
+        }
         children.push(
             Element::new(&font, ElementContent::Children(right_eles))
                 .colors(bar_colors.clone())
@@ -455,6 +466,8 @@ impl crate::TermWindow {
             },
         ));
 
+        self.apply_fancy_tab_strip_scroll(&mut computed);
+
         Ok(computed)
     }
 
@@ -462,13 +475,250 @@ impl crate::TermWindow {
         let computed = self.fancy_tab_bar.as_ref().ok_or_else(|| {
             anyhow::anyhow!("paint_fancy_tab_bar called but fancy_tab_bar is None")
         })?;
-        let ui_items = computed.ui_items();
+        let mut ui_items = computed.ui_items();
+        if let Some(clip) = self.tab_bar_strip_clip {
+            ui_items = clip_tab_strip_ui_items(ui_items, clip);
+        }
 
         let gl_state = self.render_state.as_ref().unwrap();
-        self.render_element(&computed, gl_state, None)?;
+        self.render_element(&computed, gl_state, None, None)?;
 
         Ok(ui_items)
     }
+
+    pub fn pan_tab_bar(&mut self, delta_pixels: f32, context: &dyn ::window::WindowOps) {
+        let next = (self.tab_bar_scroll_offset + delta_pixels).clamp(0., self.tab_bar_scroll_max);
+        let applied = next - self.tab_bar_scroll_offset;
+        if applied == 0. {
+            return;
+        }
+        self.tab_bar_scroll_offset = next;
+        if let Some(computed) = self.fancy_tab_bar.as_mut() {
+            if let Some(idx) = scrolling_tab_strip_index(computed) {
+                if let ComputedElementContent::Children(kids) = &mut computed.content {
+                    kids[idx].translate(euclid::vec2(-applied, 0.));
+                }
+            }
+        }
+        context.invalidate();
+    }
+
+    fn apply_fancy_tab_strip_scroll(&mut self, computed: &mut ComputedElement) {
+        self.tab_bar_strip_clip = None;
+        self.tab_bar_scroll_max = 0.;
+
+        let Some(strip_idx) = scrolling_tab_strip_index(computed) else {
+            self.tab_bar_scroll_offset = 0.;
+            self.tab_bar_follow_active = false;
+            return;
+        };
+        let plus_idx = new_tab_button_index(computed);
+        let right_left = find_right_chrome_left(computed).unwrap_or_else(|| {
+            let border = self.get_os_border();
+            self.dimensions.pixel_width as f32 - border.right.get() as f32
+        });
+        let computed_height = computed.bounds.height();
+
+        let (viewport_left, content_width, strip_y, strip_h) = match &computed.content {
+            ComputedElementContent::Children(kids) => {
+                let strip = &kids[strip_idx];
+                (
+                    strip.bounds.min_x(),
+                    strip.bounds.width(),
+                    strip.bounds.min_y(),
+                    strip.bounds.height().max(computed_height),
+                )
+            }
+            _ => return,
+        };
+
+        let plus_width = plus_idx
+            .and_then(|i| match &computed.content {
+                ComputedElementContent::Children(kids) => Some(new_tab_visual_width(&kids[i])),
+                _ => None,
+            })
+            .unwrap_or(0.);
+
+        // Layout padding is squeezed when the tab strip overflows, so reserve
+        // the drag handle in this pin instead.
+        let drag_gap = self.tab_bar_drag_gap_px();
+        let max_plus_x = (right_left - drag_gap - plus_width).max(viewport_left);
+        let plus_x = if plus_width > 0. {
+            (viewport_left + content_width).min(max_plus_x)
+        } else {
+            right_left
+        };
+
+        if let Some(i) = plus_idx {
+            if let ComputedElementContent::Children(kids) = &mut computed.content {
+                let dx = plus_x - kids[i].bounds.min_x();
+                if dx != 0. {
+                    kids[i].translate(euclid::vec2(dx, 0.));
+                }
+            }
+        }
+
+        let viewport_width = (plus_x - viewport_left).max(0.);
+        let max_scroll = (content_width - viewport_width).max(0.);
+
+        let strip = match &mut computed.content {
+            ComputedElementContent::Children(kids) => &mut kids[strip_idx],
+            _ => return,
+        };
+
+        if self.tab_bar_follow_active {
+            if let Some(active) = find_active_tab_bounds(strip) {
+                let local_start = active.min_x() - viewport_left;
+                let local_end = active.max_x() - viewport_left;
+                if local_start < self.tab_bar_scroll_offset {
+                    self.tab_bar_scroll_offset = local_start.max(0.);
+                }
+                if local_end > self.tab_bar_scroll_offset + viewport_width {
+                    self.tab_bar_scroll_offset = (local_end - viewport_width).max(0.);
+                }
+            }
+            self.tab_bar_follow_active = false;
+        }
+
+        self.tab_bar_scroll_offset = self.tab_bar_scroll_offset.clamp(0., max_scroll);
+        self.tab_bar_scroll_max = max_scroll;
+        self.tab_bar_strip_clip = Some(euclid::rect(
+            viewport_left,
+            strip_y,
+            viewport_width,
+            strip_h,
+        ));
+
+        if self.tab_bar_scroll_offset != 0. {
+            strip.translate(euclid::vec2(-self.tab_bar_scroll_offset, 0.));
+        }
+    }
+
+    fn tab_bar_drag_gap_px(&self) -> f32 {
+        self.fonts
+            .title_font()
+            .ok()
+            .map(|font| {
+                RenderMetrics::with_font_metrics(&font.metrics()).cell_size.width as f32 * 4.0
+            })
+            .unwrap_or(48.)
+            .max(32.)
+    }
+}
+
+fn is_scrolling_tab_strip(element: &ComputedElement) -> bool {
+    if matches!(
+        element.item_type,
+        Some(UIItemType::TabBar(TabBarItem::Tab { .. })) | Some(UIItemType::CloseTab(_))
+    ) {
+        return false;
+    }
+    contains_item(element, |item| {
+        matches!(item, UIItemType::TabBar(TabBarItem::Tab { .. }))
+    })
+}
+
+fn scrolling_tab_strip_index(computed: &ComputedElement) -> Option<usize> {
+    match &computed.content {
+        ComputedElementContent::Children(kids) => kids.iter().position(is_scrolling_tab_strip),
+        _ => None,
+    }
+}
+
+fn contains_item(element: &ComputedElement, pred: impl Fn(&UIItemType) -> bool + Copy) -> bool {
+    if let Some(item_type) = &element.item_type {
+        if pred(item_type) {
+            return true;
+        }
+    }
+    match &element.content {
+        ComputedElementContent::Children(kids) => kids.iter().any(|kid| contains_item(kid, pred)),
+        _ => false,
+    }
+}
+
+fn new_tab_button_index(computed: &ComputedElement) -> Option<usize> {
+    match &computed.content {
+        ComputedElementContent::Children(kids) => kids.iter().position(|kid| {
+            contains_item(kid, |item| {
+                matches!(item, UIItemType::TabBar(TabBarItem::NewTabButton))
+            })
+        }),
+        _ => None,
+    }
+}
+
+fn new_tab_visual_width(element: &ComputedElement) -> f32 {
+    fn find(ele: &ComputedElement) -> Option<f32> {
+        if matches!(
+            ele.item_type,
+            Some(UIItemType::TabBar(TabBarItem::NewTabButton))
+        ) {
+            return Some(ele.bounds.width());
+        }
+        match &ele.content {
+            ComputedElementContent::Children(kids) => kids.iter().find_map(find),
+            _ => None,
+        }
+    }
+    find(element).unwrap_or_else(|| element.bounds.width())
+}
+
+fn find_right_chrome_left(computed: &ComputedElement) -> Option<f32> {
+    match &computed.content {
+        ComputedElementContent::Children(kids) => kids
+            .iter()
+            .filter(|kid| {
+                contains_item(kid, |item| {
+                    matches!(item, UIItemType::TabBar(TabBarItem::WindowButton(_)))
+                })
+            })
+            .map(|kid| kid.bounds.min_x())
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal)),
+        _ => None,
+    }
+}
+
+fn find_active_tab_bounds(element: &ComputedElement) -> Option<RectF> {
+    if let Some(UIItemType::TabBar(TabBarItem::Tab { active: true, .. })) = &element.item_type {
+        return Some(element.bounds);
+    }
+    match &element.content {
+        ComputedElementContent::Children(kids) => kids.iter().find_map(find_active_tab_bounds),
+        _ => None,
+    }
+}
+
+fn clip_tab_strip_ui_items(items: Vec<UIItem>, clip: RectF) -> Vec<UIItem> {
+    items
+        .into_iter()
+        .filter_map(|item| {
+            let should_clip = matches!(
+                item.item_type,
+                UIItemType::TabBar(TabBarItem::Tab { .. }) | UIItemType::CloseTab(_)
+            );
+            if !should_clip {
+                return Some(item);
+            }
+            let rect = euclid::rect(
+                item.x as f32,
+                item.y as f32,
+                item.width as f32,
+                item.height as f32,
+            );
+            let hit = rect.intersection(&clip)?;
+            if hit.width() < 1. || hit.height() < 1. {
+                return None;
+            }
+            Some(UIItem {
+                x: hit.min_x().round().max(0.) as usize,
+                y: hit.min_y().round().max(0.) as usize,
+                width: hit.width().round().max(0.) as usize,
+                height: hit.height().round().max(0.) as usize,
+                item_type: item.item_type,
+            })
+        })
+        .collect()
 }
 
 fn make_x_button(

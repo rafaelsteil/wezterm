@@ -3,6 +3,7 @@ use crate::color::LinearRgba;
 use crate::customglyph::{BlockKey, Poly};
 use crate::glyphcache::CachedGlyph;
 use crate::quad::{QuadImpl, QuadTrait, TripleLayerQuadAllocator, TripleLayerQuadAllocatorTrait};
+use crate::tabbar::TabBarItem;
 use crate::termwindow::{
     ColorEase, MouseCapture, RenderState, TermWindowNotif, UIItem, UIItemType,
 };
@@ -239,6 +240,8 @@ pub struct Element {
     pub max_width: Option<Dimension>,
     pub min_width: Option<Dimension>,
     pub min_height: Option<Dimension>,
+    /// When true, children may be laid out wider than the parent viewport.
+    pub allow_overflow: bool,
 }
 
 impl Element {
@@ -262,6 +265,7 @@ impl Element {
             max_width: None,
             min_width: None,
             min_height: None,
+            allow_overflow: false,
         }
     }
 
@@ -385,6 +389,11 @@ impl Element {
 
     pub fn min_height(mut self, height: Option<Dimension>) -> Self {
         self.min_height = height;
+        self
+    }
+
+    pub fn allow_overflow(mut self, allow: bool) -> Self {
+        self.allow_overflow = allow;
         self
     }
 }
@@ -583,15 +592,20 @@ impl super::TermWindow {
 
         let border_and_padding_width = border.left + border.right + padding.left + padding.right;
 
-        let max_width = match element.max_width {
-            Some(w) => {
-                w.evaluate_as_pixels(context.width)
-                    .min(context.bounds.width())
-                    - border_and_padding_width
+        const OVERFLOW_LAYOUT_WIDTH: f32 = 100_000.;
+        let max_width = if element.allow_overflow {
+            OVERFLOW_LAYOUT_WIDTH
+        } else {
+            match element.max_width {
+                Some(w) => {
+                    w.evaluate_as_pixels(context.width)
+                        .min(context.bounds.width())
+                        - border_and_padding_width
+                }
+                None => context.bounds.width() - border_and_padding_width,
             }
-            None => context.bounds.width() - border_and_padding_width,
-        }
-        .min((context.width.pixel_max - context.bounds.min_x()) - border_and_padding_width);
+            .min((context.width.pixel_max - context.bounds.min_x()) - border_and_padding_width)
+        };
 
         match &element.content {
             ElementContent::Text(s) => {
@@ -699,11 +713,16 @@ impl super::TermWindow {
                         block_pixel_width = 0.;
                     }
 
+                    let remaining = if element.allow_overflow {
+                        OVERFLOW_LAYOUT_WIDTH
+                    } else {
+                        context.bounds.max_x() - (context.bounds.min_x() + block_pixel_width)
+                    };
                     let bounds = match child.float {
                         Float::None => euclid::rect(
                             block_pixel_width,
                             y_coord,
-                            context.bounds.max_x() - (context.bounds.min_x() + block_pixel_width),
+                            remaining.max(0.),
                             context.bounds.max_y() - (context.bounds.min_y() + y_coord),
                         ),
                         Float::Right => euclid::rect(
@@ -722,7 +741,11 @@ impl super::TermWindow {
                             width: DimensionContext {
                                 dpi: context.width.dpi,
                                 pixel_cell: context.width.pixel_cell,
-                                pixel_max: max_width,
+                                pixel_max: if element.allow_overflow {
+                                    OVERFLOW_LAYOUT_WIDTH
+                                } else {
+                                    max_width
+                                },
                             },
                             zindex: context.zindex + element.zindex,
                         },
@@ -828,7 +851,22 @@ impl super::TermWindow {
         element: &ComputedElement,
         gl_state: &RenderState,
         inherited_colors: Option<&ElementColors>,
+        clip: Option<RectF>,
     ) -> anyhow::Result<()> {
+        let clip = clip.or_else(|| {
+            if element_is_scrolling_tab_strip(element) {
+                self.tab_bar_strip_clip
+            } else {
+                None
+            }
+        });
+
+        if let Some(clip_rect) = clip {
+            if element.bounds.intersection(&clip_rect).is_none() {
+                return Ok(());
+            }
+        }
+
         let layer = gl_state.layer_for_zindex(element.zindex)?;
         let mut layers = layer.quad_allocator();
 
@@ -839,10 +877,19 @@ impl super::TermWindow {
                         Some(event) => {
                             let mouse_x = event.coords.x as f32;
                             let mouse_y = event.coords.y as f32;
-                            mouse_x >= element.bounds.min_x()
+                            let in_bounds = mouse_x >= element.bounds.min_x()
                                 && mouse_x <= element.bounds.max_x()
                                 && mouse_y >= element.bounds.min_y()
-                                && mouse_y <= element.bounds.max_y()
+                                && mouse_y <= element.bounds.max_y();
+                            let in_clip = clip
+                                .map(|c| {
+                                    mouse_x >= c.min_x()
+                                        && mouse_x <= c.max_x()
+                                        && mouse_y >= c.min_y()
+                                        && mouse_y <= c.max_y()
+                                })
+                                .unwrap_or(true);
+                            in_bounds && in_clip
                         }
                         None => false,
                     } && matches!(self.current_mouse_capture, None | Some(MouseCapture::UI));
@@ -855,14 +902,20 @@ impl super::TermWindow {
             None => &element.colors,
         };
 
-        self.render_element_background(element, colors, &mut layers, inherited_colors)?;
+        self.render_element_background(element, colors, &mut layers, inherited_colors, clip)?;
         let left = self.dimensions.pixel_width as f32 / -2.0;
         let top = self.dimensions.pixel_height as f32 / -2.0;
+        let content_max_x = clip
+            .map(|c| element.content_rect.max_x().min(c.max_x()))
+            .unwrap_or_else(|| element.content_rect.max_x());
+        let content_min_x = clip
+            .map(|c| element.content_rect.min_x().max(c.min_x()))
+            .unwrap_or_else(|| element.content_rect.min_x());
         match &element.content {
             ComputedElementContent::Text(cells) => {
                 let mut pos_x = element.content_rect.min_x();
                 for cell in cells {
-                    if pos_x >= element.content_rect.max_x() {
+                    if pos_x >= content_max_x {
                         break;
                     }
                     match cell {
@@ -870,51 +923,53 @@ impl super::TermWindow {
                             let width = sprite.coords.width();
                             let height = sprite.coords.height();
                             let pos_y = top + element.content_rect.min_y();
+                            let next_x = pos_x + width as f32;
 
-                            if pos_x + width as f32 > element.content_rect.max_x() {
+                            if next_x > content_max_x {
                                 break;
                             }
-
-                            let mut quad = layers.allocate(2)?;
-                            quad.set_position(
-                                pos_x + left,
-                                pos_y,
-                                pos_x + left + width as f32,
-                                pos_y + height as f32,
-                            );
-                            self.resolve_text(colors, inherited_colors).apply(&mut quad);
-                            quad.set_texture(sprite.texture_coords());
-                            quad.set_hsv(None);
-                            pos_x += width as f32;
-                        }
-                        ElementCell::Glyph(glyph) => {
-                            if let Some(texture) = glyph.texture.as_ref() {
-                                let pos_y = element.content_rect.min_y() as f32 + top
-                                    - (glyph.y_offset + glyph.bearing_y).get() as f32
-                                    + element.baseline;
-
-                                if pos_x + glyph.x_advance.get() as f32
-                                    > element.content_rect.max_x()
-                                {
-                                    break;
-                                }
-                                let pos_x = pos_x + (glyph.x_offset + glyph.bearing_x).get() as f32;
-                                let width = texture.coords.size.width as f32 * glyph.scale as f32;
-                                let height = texture.coords.size.height as f32 * glyph.scale as f32;
-
-                                let mut quad = layers.allocate(1)?;
+                            if next_x > content_min_x {
+                                let mut quad = layers.allocate(2)?;
                                 quad.set_position(
                                     pos_x + left,
                                     pos_y,
-                                    pos_x + left + width,
-                                    pos_y + height,
+                                    pos_x + left + width as f32,
+                                    pos_y + height as f32,
                                 );
                                 self.resolve_text(colors, inherited_colors).apply(&mut quad);
-                                quad.set_texture(texture.texture_coords());
-                                quad.set_has_color(glyph.has_color);
+                                quad.set_texture(sprite.texture_coords());
                                 quad.set_hsv(None);
                             }
-                            pos_x += glyph.x_advance.get() as f32;
+                            pos_x = next_x;
+                        }
+                        ElementCell::Glyph(glyph) => {
+                            let advance = glyph.x_advance.get() as f32;
+                            if pos_x + advance > content_max_x {
+                                break;
+                            }
+                            if let Some(texture) = glyph.texture.as_ref() {
+                                if pos_x + advance > content_min_x {
+                                    let pos_y = element.content_rect.min_y() as f32 + top
+                                        - (glyph.y_offset + glyph.bearing_y).get() as f32
+                                        + element.baseline;
+                                    let pos_x = pos_x + (glyph.x_offset + glyph.bearing_x).get() as f32;
+                                    let width = texture.coords.size.width as f32 * glyph.scale as f32;
+                                    let height = texture.coords.size.height as f32 * glyph.scale as f32;
+
+                                    let mut quad = layers.allocate(1)?;
+                                    quad.set_position(
+                                        pos_x + left,
+                                        pos_y,
+                                        pos_x + left + width,
+                                        pos_y + height,
+                                    );
+                                    self.resolve_text(colors, inherited_colors).apply(&mut quad);
+                                    quad.set_texture(texture.texture_coords());
+                                    quad.set_has_color(glyph.has_color);
+                                    quad.set_hsv(None);
+                                }
+                            }
+                            pos_x += advance;
                         }
                     }
                 }
@@ -923,21 +978,29 @@ impl super::TermWindow {
                 drop(layers);
 
                 for kid in kids {
-                    self.render_element(kid, gl_state, Some(colors))?;
+                    self.render_element(kid, gl_state, Some(colors), clip)?;
                 }
             }
             ComputedElementContent::Poly { poly, line_width } => {
                 if element.content_rect.width() >= poly.width {
-                    let mut quad = self.poly_quad(
-                        &mut layers,
-                        1,
-                        element.content_rect.origin,
-                        poly.poly,
-                        *line_width,
-                        euclid::size2(poly.width, poly.height),
-                        LinearRgba::TRANSPARENT,
-                    )?;
-                    self.resolve_text(colors, inherited_colors).apply(&mut quad);
+                    let dest = euclid::rect(
+                        element.content_rect.origin.x,
+                        element.content_rect.origin.y,
+                        poly.width,
+                        poly.height,
+                    );
+                    if rect_fully_inside_clip(dest, clip) {
+                        let mut quad = self.poly_quad(
+                            &mut layers,
+                            1,
+                            element.content_rect.origin,
+                            poly.poly,
+                            *line_width,
+                            euclid::size2(poly.width, poly.height),
+                            LinearRgba::TRANSPARENT,
+                        )?;
+                        self.resolve_text(colors, inherited_colors).apply(&mut quad);
+                    }
                 }
             }
         }
@@ -1013,6 +1076,7 @@ impl super::TermWindow {
         colors: &ElementColors,
         layers: &mut TripleLayerQuadAllocator,
         inherited_colors: Option<&ElementColors>,
+        clip: Option<RectF>,
     ) -> anyhow::Result<()> {
         let mut top_left_width = 0.;
         let mut top_left_height = 0.;
@@ -1036,21 +1100,21 @@ impl super::TermWindow {
             bottom_right_height = c.bottom_right.height;
 
             if top_left_width > 0. && top_left_height > 0. {
-                self.poly_quad(
+                if let Some(mut quad) = self.poly_quad_clipped(
                     layers,
-                    0,
                     element.border_rect.origin,
                     c.top_left.poly,
                     element.border.top as isize,
                     euclid::size2(top_left_width, top_left_height),
                     colors.border.top,
-                )?
-                .set_grayscale();
+                    clip,
+                )? {
+                    quad.set_grayscale();
+                }
             }
             if top_right_width > 0. && top_right_height > 0. {
-                self.poly_quad(
+                if let Some(mut quad) = self.poly_quad_clipped(
                     layers,
-                    0,
                     euclid::point2(
                         element.border_rect.max_x() - top_right_width,
                         element.border_rect.min_y(),
@@ -1059,13 +1123,14 @@ impl super::TermWindow {
                     element.border.top as isize,
                     euclid::size2(top_right_width, top_right_height),
                     colors.border.top,
-                )?
-                .set_grayscale();
+                    clip,
+                )? {
+                    quad.set_grayscale();
+                }
             }
             if bottom_left_width > 0. && bottom_left_height > 0. {
-                self.poly_quad(
+                if let Some(mut quad) = self.poly_quad_clipped(
                     layers,
-                    0,
                     euclid::point2(
                         element.border_rect.min_x(),
                         element.border_rect.max_y() - bottom_left_height,
@@ -1074,13 +1139,14 @@ impl super::TermWindow {
                     element.border.bottom as isize,
                     euclid::size2(bottom_left_width, bottom_left_height),
                     colors.border.bottom,
-                )?
-                .set_grayscale();
+                    clip,
+                )? {
+                    quad.set_grayscale();
+                }
             }
             if bottom_right_width > 0. && bottom_right_height > 0. {
-                self.poly_quad(
+                if let Some(mut quad) = self.poly_quad_clipped(
                     layers,
-                    0,
                     euclid::point2(
                         element.border_rect.max_x() - bottom_right_width,
                         element.border_rect.max_y() - bottom_right_height,
@@ -1089,8 +1155,10 @@ impl super::TermWindow {
                     element.border.bottom as isize,
                     euclid::size2(bottom_right_width, bottom_right_height),
                     colors.border.bottom,
-                )?
-                .set_grayscale();
+                    clip,
+                )? {
+                    quad.set_grayscale();
+                }
             }
 
             // Filling the background is more complex because we can't
@@ -1106,9 +1174,8 @@ impl super::TermWindow {
             // to do the rest
 
             // The `T` piece
-            let mut quad = self.filled_rectangle(
+            if let Some(mut quad) = self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x() + top_left_width,
                     element.border_rect.min_y(),
@@ -1116,13 +1183,14 @@ impl super::TermWindow {
                     top_left_height.max(top_right_height),
                 ),
                 LinearRgba::TRANSPARENT,
-            )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+                clip,
+            )? {
+                self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            }
 
             // The `B` piece
-            let mut quad = self.filled_rectangle(
+            if let Some(mut quad) = self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x() + bottom_left_width,
                     element.border_rect.max_y() - bottom_left_height.max(bottom_right_height),
@@ -1130,13 +1198,14 @@ impl super::TermWindow {
                     bottom_left_height.max(bottom_right_height),
                 ),
                 LinearRgba::TRANSPARENT,
-            )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+                clip,
+            )? {
+                self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            }
 
             // The `L` piece
-            let mut quad = self.filled_rectangle(
+            if let Some(mut quad) = self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x(),
                     element.border_rect.min_y() + top_left_height,
@@ -1144,13 +1213,14 @@ impl super::TermWindow {
                     element.border_rect.height() - (top_left_height + bottom_left_height),
                 ),
                 LinearRgba::TRANSPARENT,
-            )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+                clip,
+            )? {
+                self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            }
 
             // The `R` piece
-            let mut quad = self.filled_rectangle(
+            if let Some(mut quad) = self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.max_x() - top_right_width,
                     element.border_rect.min_y() + top_right_height,
@@ -1158,13 +1228,14 @@ impl super::TermWindow {
                     element.border_rect.height() - (top_right_height + bottom_right_height),
                 ),
                 LinearRgba::TRANSPARENT,
-            )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+                clip,
+            )? {
+                self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            }
 
             // The `C` piece
-            let mut quad = self.filled_rectangle(
+            if let Some(mut quad) = self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x() + top_left_width,
                     element.border_rect.min_y() + top_right_height.min(top_left_height),
@@ -1174,12 +1245,16 @@ impl super::TermWindow {
                             + bottom_right_height.min(bottom_left_height)),
                 ),
                 LinearRgba::TRANSPARENT,
-            )?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+                clip,
+            )? {
+                self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            }
         } else if colors.bg != InheritableColor::Color(LinearRgba::TRANSPARENT) {
-            let mut quad =
-                self.filled_rectangle(layers, 0, element.padding, LinearRgba::TRANSPARENT)?;
-            self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            if let Some(mut quad) =
+                self.filled_rectangle_clipped(layers, element.padding, LinearRgba::TRANSPARENT, clip)?
+            {
+                self.resolve_bg(colors, inherited_colors).apply(&mut quad);
+            }
         }
 
         if element.border_rect == element.padding {
@@ -1188,9 +1263,8 @@ impl super::TermWindow {
         }
 
         if element.border.top > 0. && colors.border.top != LinearRgba::TRANSPARENT {
-            self.filled_rectangle(
+            self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x() + top_left_width as f32,
                     element.border_rect.min_y(),
@@ -1198,12 +1272,12 @@ impl super::TermWindow {
                     element.border.top,
                 ),
                 colors.border.top,
+                clip,
             )?;
         }
         if element.border.bottom > 0. && colors.border.bottom != LinearRgba::TRANSPARENT {
-            self.filled_rectangle(
+            self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x() + bottom_left_width as f32,
                     element.border_rect.max_y() - element.border.bottom,
@@ -1211,12 +1285,12 @@ impl super::TermWindow {
                     element.border.bottom,
                 ),
                 colors.border.bottom,
+                clip,
             )?;
         }
         if element.border.left > 0. && colors.border.left != LinearRgba::TRANSPARENT {
-            self.filled_rectangle(
+            self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.min_x(),
                     element.border_rect.min_y() + top_left_height as f32,
@@ -1224,12 +1298,12 @@ impl super::TermWindow {
                     element.border_rect.height() - (top_left_height + bottom_left_height) as f32,
                 ),
                 colors.border.left,
+                clip,
             )?;
         }
         if element.border.right > 0. && colors.border.right != LinearRgba::TRANSPARENT {
-            self.filled_rectangle(
+            self.filled_rectangle_clipped(
                 layers,
-                0,
                 euclid::rect(
                     element.border_rect.max_x() - element.border.right,
                     element.border_rect.min_y() + top_right_height as f32,
@@ -1237,9 +1311,89 @@ impl super::TermWindow {
                     element.border_rect.height() - (top_right_height + bottom_right_height) as f32,
                 ),
                 colors.border.right,
+                clip,
             )?;
         }
 
         Ok(())
+    }
+
+    fn filled_rectangle_clipped<'a>(
+        &self,
+        layers: &'a mut TripleLayerQuadAllocator,
+        rect: RectF,
+        color: LinearRgba,
+        clip: Option<RectF>,
+    ) -> anyhow::Result<Option<QuadImpl<'a>>> {
+        let Some(rect) = intersect_visible_rect(rect, clip) else {
+            return Ok(None);
+        };
+        Ok(Some(self.filled_rectangle(layers, 0, rect, color)?))
+    }
+
+    fn poly_quad_clipped<'a>(
+        &self,
+        layers: &'a mut TripleLayerQuadAllocator,
+        point: ::window::PointF,
+        polys: &'static [Poly],
+        underline_height: wezterm_font::units::IntPixelLength,
+        cell_size: ::window::SizeF,
+        color: LinearRgba,
+        clip: Option<RectF>,
+    ) -> anyhow::Result<Option<QuadImpl<'a>>> {
+        let dest = euclid::rect(point.x, point.y, cell_size.width, cell_size.height);
+        if !rect_fully_inside_clip(dest, clip) {
+            return Ok(None);
+        }
+        Ok(Some(self.poly_quad(
+            layers,
+            0,
+            point,
+            polys,
+            underline_height,
+            cell_size,
+            color,
+        )?))
+    }
+}
+
+fn element_is_scrolling_tab_strip(element: &ComputedElement) -> bool {
+    // Only the tab-strip container itself. The root bar also contains tabs, but it
+    // has an item_type; clipping that ancestor would hide the + button and
+    // integrated window controls.
+    if element.item_type.is_some() {
+        return false;
+    }
+
+    fn has_tab(ele: &ComputedElement) -> bool {
+        match &ele.item_type {
+            Some(UIItemType::TabBar(TabBarItem::Tab { .. })) => true,
+            _ => match &ele.content {
+                ComputedElementContent::Children(kids) => kids.iter().any(has_tab),
+                _ => false,
+            },
+        }
+    }
+
+    has_tab(element)
+}
+
+fn intersect_visible_rect(rect: RectF, clip: Option<RectF>) -> Option<RectF> {
+    let rect = match clip {
+        Some(clip) => rect.intersection(&clip)?,
+        None => rect,
+    };
+    (rect.width() > 0. && rect.height() > 0.).then_some(rect)
+}
+
+fn rect_fully_inside_clip(rect: RectF, clip: Option<RectF>) -> bool {
+    match clip {
+        None => true,
+        Some(clip) => {
+            rect.min_x() >= clip.min_x() - 0.5
+                && rect.max_x() <= clip.max_x() + 0.5
+                && rect.min_y() >= clip.min_y() - 0.5
+                && rect.max_y() <= clip.max_y() + 0.5
+        }
     }
 }

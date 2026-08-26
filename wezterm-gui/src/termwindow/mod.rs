@@ -394,6 +394,14 @@ pub struct TermWindow {
     show_scroll_bar: bool,
     tab_bar: TabBarState,
     fancy_tab_bar: Option<box_model::ComputedElement>,
+    /// Horizontal pan of the fancy tab strip, in pixels.
+    tab_bar_scroll_offset: f32,
+    /// Maximum pan derived from the last fancy tab bar layout.
+    tab_bar_scroll_max: f32,
+    /// When true, the next fancy tab bar rebuild pans to keep the active tab visible.
+    tab_bar_follow_active: bool,
+    /// Visible viewport of the scrolling tab strip, in window pixels.
+    tab_bar_strip_clip: Option<RectF>,
     pub right_status: String,
     pub left_status: String,
     last_ui_item: Option<UIItem>,
@@ -716,6 +724,10 @@ impl TermWindow {
             show_scroll_bar: config.enable_scroll_bar,
             tab_bar: TabBarState::default(),
             fancy_tab_bar: None,
+            tab_bar_scroll_offset: 0.,
+            tab_bar_scroll_max: 0.,
+            tab_bar_follow_active: false,
+            tab_bar_strip_clip: None,
             right_status: String::new(),
             left_status: String::new(),
             last_mouse_coords: (0, -1),
@@ -2201,6 +2213,7 @@ impl TermWindow {
                 pane.focus_changed(true);
             }
 
+            self.tab_bar_follow_active = true;
             self.update_title();
             self.update_scrollbar();
         }

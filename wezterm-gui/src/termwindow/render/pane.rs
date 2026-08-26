@@ -26,7 +26,7 @@ impl crate::TermWindow {
         let mut ui_items = computed.ui_items();
         self.ui_items.append(&mut ui_items);
         let gl_state = self.render_state.as_ref().unwrap();
-        self.render_element(&computed, gl_state, None)
+        self.render_element(&computed, gl_state, None, None)
     }
 
     pub fn paint_pane(
