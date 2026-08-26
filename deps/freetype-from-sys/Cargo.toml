@@ -1,0 +1,21 @@
+# WezTerm FreeType *Rust* API (bindgen + fixed-point wrappers) without
+# compiling libfreetype and without `links = "freetype"`.
+#
+# The C library is GPUI's `freetype-sys` (same `links = "freetype"` crate
+# font-kit uses). Do **not** depend on `freetype-sys` here: Cargo would then
+# put it in the root wezterm-gui lockfile next to vendored `deps/freetype`.
+#
+# Used only when `wezterm-font` is built with `--features sys-freetype`.
+# Default wezterm-gui still uses `deps/freetype`.
+
+[package]
+name = "gpui-freetype"
+version = "0.1.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+fixed = "1.23"
+
+[lib]
+path = "../freetype/src/lib.rs"

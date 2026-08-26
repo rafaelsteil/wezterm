@@ -1,40 +1,28 @@
-//! Live PTY + wezterm-term model, painted as monospaced GPUI text.
+//! Mux `LocalPane` (same host as wezterm-gui), painted as monospaced GPUI text.
 //!
-//! Not the wezterm-gui glyph atlas. No mux. No `window/` event loop.
+//! Spawn goes through `mux::domain::LocalDomain::spawn_pane` → ConPTY +
+//! `wezterm-term` inside `LocalPane`. Not a sample/demo shell. Not the
+//! wezterm-gui glyph atlas.
 
-use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use gpui::*;
 use gpui_component::StyledExt;
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
-use wezterm_term::color::ColorPalette;
-use wezterm_term::{
-    CursorPosition, KeyCode, KeyModifiers, Terminal, TerminalConfiguration, TerminalSize,
-};
+use mux::pane::{Pane, PaneId};
+use mux::{Mux, MuxNotification};
+use wezterm_term::{KeyCode, KeyModifiers, TerminalSize};
 
 const DEFAULT_ROWS: usize = 24;
 const DEFAULT_COLS: usize = 80;
 
-#[derive(Debug)]
-struct PocTermConfig;
-
-impl TerminalConfiguration for PocTermConfig {
-    fn color_palette(&self) -> ColorPalette {
-        ColorPalette::default()
-    }
-}
-
-struct LivePty {
-    terminal: Terminal,
-    master: Box<dyn MasterPty>,
-    child: Box<dyn portable_pty::Child + Send>,
-    size: TerminalSize,
+struct LiveMux {
+    pane: Arc<dyn Pane>,
+    alive: Arc<AtomicBool>,
 }
 
 pub struct TermPane {
-    live: Result<LivePty, String>,
+    live: Result<LiveMux, String>,
     font_px: f32,
 }
 
@@ -59,11 +47,11 @@ impl TermPane {
     pub fn title(&self) -> String {
         match &self.live {
             Ok(live) => {
-                let title = live.terminal.get_title();
+                let title = live.pane.get_title();
                 if title.is_empty() || title.eq_ignore_ascii_case("wezterm") {
-                    "shell".into()
+                    "cmd.exe".into()
                 } else {
-                    title.to_string()
+                    title
                 }
             }
             Err(_) => "error".into(),
@@ -77,13 +65,14 @@ impl TermPane {
         let Some((key, mods)) = map_keystroke(&event.keystroke) else {
             return false;
         };
-        live.terminal.key_down(key, mods).ok();
+        live.pane.key_down(key, mods).ok();
         true
     }
 
     pub fn clear_scrollback(&mut self) {
         if let Ok(live) = self.live.as_mut() {
-            live.terminal.erase_scrollback();
+            live.pane
+                .erase_scrollback(config::keyassignment::ScrollbackEraseMode::ScrollbackOnly);
         }
     }
 
@@ -98,7 +87,8 @@ impl TermPane {
         }
         let cols = ((f32::from(width) / cell_w).floor() as usize).clamp(8, 400);
         let rows = ((f32::from(height) / cell_h).floor() as usize).clamp(2, 200);
-        if live.size.cols == cols && live.size.rows == rows {
+        let dims = live.pane.get_dimensions();
+        if dims.cols == cols && dims.viewport_rows == rows {
             return;
         }
         let size = TerminalSize {
@@ -108,38 +98,26 @@ impl TermPane {
             pixel_height: f32::from(height) as usize,
             dpi: 96,
         };
-        let pty_size = PtySize {
-            rows: rows as u16,
-            cols: cols as u16,
-            pixel_width: size.pixel_width as u16,
-            pixel_height: size.pixel_height as u16,
-        };
-        if live.master.resize(pty_size).is_ok() {
-            live.terminal.resize(size);
-            live.size = size;
-        }
+        let _ = live.pane.resize(size);
     }
 
-    fn visible_text(&self) -> (Vec<String>, Option<CursorPosition>, u32, u32) {
+    fn visible_text(&self) -> (Vec<String>, Option<(usize, usize)>, u32, u32) {
         match &self.live {
             Ok(live) => {
-                let cursor = live.terminal.cursor_pos();
-                let screen = live.terminal.screen();
-                let rows = screen.physical_rows;
-                let mut buf = std::collections::VecDeque::with_capacity(rows);
-                screen.for_each_phys_line(|_, line| {
-                    if buf.len() == rows {
-                        buf.pop_front();
-                    }
-                    buf.push_back(line.as_str().into_owned());
-                });
-                let lines: Vec<String> = buf.into_iter().collect();
-                let pal = live.terminal.palette();
+                let dims = live.pane.get_dimensions();
+                let cursor = live.pane.get_cursor_position();
+                let pal = live.pane.palette();
+                let top = dims.physical_top;
+                let end = top.saturating_add(dims.viewport_rows as isize);
+                let (first, lines) = live.pane.get_lines(top..end);
+                let text: Vec<String> = lines.iter().map(|line| line.as_str().into_owned()).collect();
+                let vis_row = usize::try_from(cursor.y.saturating_sub(first)).ok();
+                let vis_col = cursor.x;
                 let (fr, fg, fb, _) = pal.foreground.as_rgba_u8();
                 let (br, bg, bb, _) = pal.background.as_rgba_u8();
                 let fg = u32::from_be_bytes([0, fr, fg, fb]);
                 let bg = u32::from_be_bytes([0, br, bg, bb]);
-                (lines, Some(cursor), fg, bg)
+                (text, vis_row.map(|row| (row, vis_col)), fg, bg)
             }
             Err(err) => (vec![err.clone()], None, 0xc8c8c8, 0x0c0c0c),
         }
@@ -148,13 +126,17 @@ impl TermPane {
 
 impl Drop for TermPane {
     fn drop(&mut self) {
-        if let Ok(live) = self.live.as_mut() {
-            let _ = live.child.kill();
+        if let Ok(live) = &self.live {
+            live.alive.store(false, Ordering::Relaxed);
+            live.pane.kill();
+            if let Some(mux) = Mux::try_get() {
+                mux.remove_pane(live.pane.pane_id());
+            }
         }
     }
 }
 
-fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LivePty> {
+fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LiveMux> {
     let size = TerminalSize {
         rows: DEFAULT_ROWS,
         cols: DEFAULT_COLS,
@@ -162,76 +144,45 @@ fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LivePty> {
         pixel_height: DEFAULT_ROWS * 16,
         dpi: 96,
     };
-    let pty_system = native_pty_system();
-    let pair = pty_system
-        .openpty(PtySize {
-            rows: size.rows as u16,
-            cols: size.cols as u16,
-            pixel_width: size.pixel_width as u16,
-            pixel_height: size.pixel_height as u16,
-        })
-        .context("openpty")?;
-
-    let cmd = CommandBuilder::new_default_prog();
-    let child = pair
-        .slave
-        .spawn_command(cmd)
-        .context("spawn default shell")?;
-    drop(pair.slave);
-
-    let mut reader = pair.master.try_clone_reader().context("clone pty reader")?;
-    let writer = pair.master.take_writer().context("pty writer")?;
-
-    let mut terminal = Terminal::new(
-        size,
-        Arc::new(PocTermConfig),
-        "WezTerm",
-        "gpui-poc",
-        Box::new(writer),
-    );
-    #[cfg(windows)]
-    terminal.enable_conpty_quirks();
-
-    let (tx, rx) = async_channel::unbounded::<Vec<u8>>();
-    std::thread::Builder::new()
-        .name("wezterm-gpui-pty".into())
-        .spawn(move || {
-            let mut buf = [0u8; 8192];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if tx.send_blocking(buf[..n].to_vec()).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
+    let pane = crate::mux_host::spawn_cmd_exe(size)?;
+    let pane_id = pane.pane_id();
+    let alive = Arc::new(AtomicBool::new(true));
+    let (tx, rx) = async_channel::unbounded::<()>();
+    {
+        let alive = Arc::clone(&alive);
+        Mux::get().subscribe(move |n| {
+            if !alive.load(Ordering::Relaxed) {
+                return false;
             }
-        })
-        .context("pty reader thread")?;
+            if notification_is_pane(&n, pane_id) {
+                let _ = tx.send_blocking(());
+            }
+            true
+        });
+    }
 
     cx.spawn(async move |this, cx| {
-        while let Ok(chunk) = rx.recv().await {
-            let ok = this.update(cx, |this, cx| {
-                if let Ok(live) = this.live.as_mut() {
-                    live.terminal.advance_bytes(&chunk);
-                }
-                cx.notify();
-            });
-            if ok.is_err() {
+        while let Ok(()) = rx.recv().await {
+            if this.update(cx, |_, cx| cx.notify()).is_err() {
                 break;
             }
         }
     })
     .detach();
 
-    Ok(LivePty {
-        terminal,
-        master: pair.master,
-        child,
-        size,
-    })
+    Ok(LiveMux { pane, alive })
+}
+
+fn notification_is_pane(n: &MuxNotification, pane_id: PaneId) -> bool {
+    match n {
+        MuxNotification::PaneOutput(id)
+        | MuxNotification::PaneRemoved(id)
+        | MuxNotification::PaneFocused(id)
+        | MuxNotification::PaneAdded(id) => *id == pane_id,
+        MuxNotification::Alert { pane_id: id, .. }
+        | MuxNotification::AssignClipboard { pane_id: id, .. } => *id == pane_id,
+        _ => false,
+    }
 }
 
 fn map_keystroke(ks: &Keystroke) -> Option<(KeyCode, KeyModifiers)> {
@@ -312,8 +263,8 @@ impl Render for TermPane {
 
         let font_px = self.font_px;
         let (lines, cursor, fg, bg) = self.visible_text();
-        let cursor_row = cursor.map(|c| c.y as usize);
-        let cursor_col = cursor.map(|c| c.x).unwrap_or(0);
+        let cursor_row = cursor.map(|(row, _)| row);
+        let cursor_col = cursor.map(|(_, col)| col).unwrap_or(0);
 
         div()
             .id("term-pane")

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub mod core_text;
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(target_os = "macos"), feature = "native-fontconfig"))]
 pub mod font_config;
 pub mod gdi;
 
@@ -222,9 +222,9 @@ pub trait FontLocator {
 pub fn new_locator(locator: FontLocatorSelection) -> Arc<dyn FontLocator + Send + Sync> {
     match locator {
         FontLocatorSelection::FontConfig => {
-            #[cfg(all(unix, not(target_os = "macos")))]
+            #[cfg(all(unix, not(target_os = "macos"), feature = "native-fontconfig"))]
             return Arc::new(font_config::FontConfigFontLocator {});
-            #[cfg(not(all(unix, not(target_os = "macos"))))]
+            #[cfg(not(all(unix, not(target_os = "macos"), feature = "native-fontconfig")))]
             panic!("fontconfig not compiled in");
         }
         FontLocatorSelection::CoreText => {

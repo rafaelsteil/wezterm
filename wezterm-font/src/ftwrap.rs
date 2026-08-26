@@ -5,7 +5,7 @@ use crate::parser::ParsedFont;
 use crate::rasterizer::colr::DrawOp;
 use anyhow::{anyhow, Context};
 use config::{configuration, FreeTypeLoadFlags, FreeTypeLoadTarget};
-pub use freetype::*;
+pub use crate::ft_crate::*;
 use memmap2::{Mmap, MmapOptions};
 use rangeset::RangeSet;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 #[inline]
 pub fn succeeded(error: FT_Error) -> bool {
-    error == freetype::FT_Err_Ok as FT_Error
+    error == crate::ft_crate::FT_Err_Ok as FT_Error
 }
 
 /// Translate an error and value into a result

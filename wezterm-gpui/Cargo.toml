@@ -6,9 +6,10 @@ edition = "2024"
 publish = false
 description = "GPUI proof-of-concept frontend for WezTerm (does not replace wezterm-gui)"
 
-# Isolated workspace: cannot join the WezTerm workspace because GPUI's
-# font-kit depends on freetype-sys (`links = "freetype"`) and WezTerm vendors
-# its own freetype with the same links key.
+# Isolated workspace: cannot join the WezTerm root workspace while wezterm-gui
+# still vendors `deps/freetype` (`links = "freetype"`). This crate uses GPUI's
+# `freetype-sys` as the single FreeType in *this* graph (`wezterm-font` feature
+# `sys-freetype`).
 [workspace]
 
 [dependencies]
@@ -20,7 +21,18 @@ async-channel = "2.3"
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
-# Terminal model + PTY only. Do not depend on mux, wezterm-gui, window, or
-# wezterm-font (freetype `links` conflict with GPUI's freetype-sys).
+# Same local-shell host as wezterm-gui (`mux` LocalDomain / LocalPane).
+# wezterm-font uses GPUI's freetype-sys (`sys-freetype`); do not take
+# wezterm-gui or window (event loop). cairo-sys is WezTerm's vendored cairo
+# (no FreeType); required by wezterm-font COLR/recording surfaces.
+config = { path = "../config" }
+mux = { path = "../mux" }
 portable-pty = { path = "../pty" }
+promise = { path = "../promise" }
+wezterm-font = { path = "../wezterm-font", default-features = false, features = ["sys-freetype"] }
 wezterm-term = { path = "../term" }
+# Owns `links = "freetype"` in this graph (same crate GPUI font-kit uses).
+freetype-sys = "=0.20.1"
+
+[patch.crates-io]
+cairo-sys-rs = { path = "../deps/cairo" }

@@ -18,5 +18,5 @@ Adding `wezterm-gpui` as a root workspace member failed cargo resolution:
 ## Consequences
 
 - Two lockfiles. Root `cargo check` does not compile GPUI.
-- Duplicate native stacks (WezTerm freetype vs font-kit freetype-sys) until a windowing cutover or a shared `links` strategy.
+- Duplicate native stacks until cutover: wezterm-gui still vendors `deps/freetype`; the GPUI graph uses only `freetype-sys` (ADR 0003). The two graphs must not merge.
 - Git pins for Zed and gpui-component live in `wezterm-gpui/Cargo.toml` `rev` and `docs/STATE.json` `pins`.

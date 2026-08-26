@@ -22,6 +22,7 @@ use wezterm_bidi::Direction;
 use wezterm_term::{CellAttributes, Intensity};
 use wezterm_toast_notification::ToastNotification;
 
+mod ft_crate;
 mod hbwrap;
 
 pub mod db;
@@ -32,7 +33,7 @@ pub mod rasterizer;
 pub mod shaper;
 pub mod units;
 
-#[cfg(all(unix, not(target_os = "macos")))]
+#[cfg(all(unix, not(target_os = "macos"), feature = "native-fontconfig"))]
 pub mod fcwrap;
 
 pub use crate::rasterizer::RasterizedGlyph;

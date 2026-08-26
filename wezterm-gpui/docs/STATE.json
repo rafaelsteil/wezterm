@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-26T17:55:00Z",
+  "updated": "2026-08-26T21:20:00Z",
   "status": "in_progress",
-  "current_phase": "live-pty",
+  "current_phase": "gpui-owns-freetype",
   "next": [
     {
-      "id": "user-try-live-pty",
-      "action": "User try live PTY in the app shell (type, Ctrl+T new tab, resize). Then cell-paint Element, charselect, or palette keyboard polish.",
+      "id": "user-try-mux-cmd-exe",
+      "action": "User try mux LocalDomain cmd.exe in the app shell (type, Ctrl+T new tab, resize). Confirm it is a real cmd.exe prompt. Then cell-paint Element using wezterm-font, charselect, or palette keyboard polish.",
       "blocked_by": []
     },
     {
@@ -55,12 +55,22 @@
     {
       "id": "poc-chrome",
       "status": "in_progress",
-      "notes": "Chrome still evolving. Confirm/prompt done. Live PTY text paint in pane. Next after user try: charselect, palette keyboard, or glyph Element."
+      "notes": "Chrome still evolving. Confirm/prompt done. Mux LocalPane cmd.exe text paint. Next after user try: charselect, palette keyboard, or glyph Element."
     },
     {
       "id": "live-pty",
       "status": "done",
-      "notes": "portable-pty + wezterm-term path deps in isolated crate. Per-tab default shell. GPUI Consolas text of visible cells. cargo check and cargo build --manifest-path wezterm-gpui/Cargo.toml green. Not user-tried. No mux, no glyph atlas."
+      "notes": "First slice: homemade portable-pty + wezterm-term host. Superseded by mux-cmd-exe (same crates, wezterm-gui spawn path)."
+    },
+    {
+      "id": "mux-cmd-exe",
+      "status": "done",
+      "notes": "Path-dep mux + config. LocalDomain::spawn_pane with %ComSpec%/cmd.exe. GPUI Consolas text of LocalPane cells. cargo check and cargo build --manifest-path wezterm-gpui/Cargo.toml green. Not user-tried. Paint is not the glyph atlas. wezterm-font now compiles in this graph (sys-freetype)."
+    },
+    {
+      "id": "gpui-owns-freetype",
+      "status": "done",
+      "notes": "wezterm-font feature sys-freetype + gpui-freetype bindgen shim + harfbuzz sys-freetype headers. GPUI graph: only freetype-sys 0.20.1. native-fontconfig off. cargo check --manifest-path wezterm-gpui/Cargo.toml and cargo check -p wezterm-font (vendored default) green. Glyph Element not wired. ABI vs freetype-sys unproven at runtime."
     },
     {
       "id": "window-cutover",
@@ -70,7 +80,7 @@
     {
       "id": "terminal-element",
       "status": "pending",
-      "notes": "custom GPUI Element for glyph atlas — after live PTY text paint; not mux"
+      "notes": "custom GPUI Element for glyph atlas — wezterm-font now compiles in the GPUI graph (sys-freetype); paint still Consolas text"
     },
     {
       "id": "delete-old-ui",
@@ -123,6 +133,19 @@
       "decision": "live_pty_via_wezterm_term_not_mux",
       "rationale": "User asked for actual shell in GPUI chrome. portable-pty + wezterm-term path deps; text paint; no mux/font/window.",
       "record": "docs/decisions/006-live-pty-in-gpui-chrome.json"
+    },
+    {
+      "at": "2026-08-26T18:10:00Z",
+      "decision": "gpui_shell_via_mux_localdomain",
+      "rationale": "User asked for wezterm-gui's cmd.exe engine, not a homemade PTY host. mux LocalDomain::spawn_pane from the isolated crate; still no wezterm-gui/window/wezterm-font.",
+      "record": "docs/decisions/007-mux-localdomain-cmd-exe.json"
+    },
+    {
+      "at": "2026-08-26T21:20:00Z",
+      "decision": "gpui_graph_owns_freetype_sys",
+      "rationale": "Single links=freetype owner in the GPUI graph is freetype-sys. wezterm-gui keeps vendored deps/freetype. Isolated workspaces stay.",
+      "record": "docs/decisions/008-gpui-owns-freetype.json",
+      "adr": "docs/adr/0003-gpui-owns-freetype.md"
     }
   ],
   "constraints": [
@@ -170,10 +193,22 @@
       "e2e": "Ctrl+W / tab close / Ctrl+Q / palette Rename tab — compile+build green, not yet user-tried"
     },
     "live_pty": {
-      "status": "poc_text_paint",
+      "status": "superseded_by_mux_localpane",
       "legacy": "mux LocalPane + wezterm-gui glyph renderer",
-      "gpui": "wezterm-gpui/src/term_pane.rs",
-      "e2e": "compile+build green; default shell via portable-pty; not yet user-tried"
+      "gpui": "wezterm-gpui/src/term_pane.rs (homemade portable-pty host; replaced)",
+      "e2e": "compile+build green; superseded 2026-08-26"
+    },
+    "mux_cmd_exe": {
+      "status": "poc_text_paint",
+      "legacy": "mux LocalDomain::spawn_pane + LocalPane (wezterm-gui uses this, then glyph-paints)",
+      "gpui": "wezterm-gpui/src/mux_host.rs + term_pane.rs",
+      "e2e": "cargo check + cargo build green; cmd.exe via mux LocalDomain; GPUI Consolas text; not yet user-tried"
+    },
+    "wezterm_font_sys_freetype": {
+      "status": "compile_in_graph",
+      "legacy": "wezterm-font + deps/freetype + harfbuzz vendored FT",
+      "gpui": "wezterm-font features sys-freetype; deps/freetype-from-sys; harfbuzz sys-freetype; freetype-sys 0.20.1",
+      "e2e": "cargo check --manifest-path wezterm-gpui/Cargo.toml and cargo check -p wezterm-font green; not used for paint yet"
     }
   },
   "findings": [
@@ -230,7 +265,27 @@
     {
       "at": "2026-08-26T17:55:00Z",
       "id": "path_dep_term_pty_ok_no_freetype",
-      "detail": "wezterm-gpui path-deps portable-pty and wezterm-term. Isolated workspace still compiles; wezterm-term inherits root workspace.dependencies by walking up. Did not pull wezterm-font/freetype. mux skipped (config/lua). Screen::visible_lines is cfg(test) only; POC uses for_each_phys_line sliding window of physical_rows."
+      "detail": "wezterm-gpui path-deps portable-pty and wezterm-term. Isolated workspace still compiles; wezterm-term inherits root workspace.dependencies by walking up. Did not pull wezterm-font/freetype. mux skipped (config/lua) at this slice. Screen::visible_lines is cfg(test) only; POC used for_each_phys_line sliding window of physical_rows."
+    },
+    {
+      "at": "2026-08-26T18:10:00Z",
+      "id": "mux_path_dep_ok_no_freetype",
+      "detail": "wezterm-gpui path-deps mux + config + promise. Isolated cargo check green. Pulls lua/mlua/openssl/libssh (mux/ssh) but not wezterm-font/freetype. Mux PTY notify uses promise::spawn; POC runs SimpleExecutor on a side thread because GPUI owns GetMessage."
+    },
+    {
+      "at": "2026-08-26T21:20:00Z",
+      "id": "optional_freetype_sys_poisons_root_lockfile",
+      "detail": "Even optional freetype-sys on wezterm-font/harfbuzz/gpui-freetype fails root cargo resolve: two links=freetype in one lockfile. Shim and HarfBuzz sys-freetype must not crate-depend on freetype-sys. wezterm-gpui depends on freetype-sys explicitly."
+    },
+    {
+      "at": "2026-08-26T21:20:00Z",
+      "id": "fontconfig_links_same_pattern",
+      "detail": "wezterm-font unix fontconfig vs GPUI yeslogic-fontconfig-sys both links=fontconfig. Feature native-fontconfig is default for wezterm-gui, off in wezterm-gpui."
+    },
+    {
+      "at": "2026-08-26T21:20:00Z",
+      "id": "wezterm_font_sys_freetype_check_green",
+      "detail": "cargo check --manifest-path wezterm-gpui/Cargo.toml green with wezterm-font sys-freetype. cargo check -p wezterm-font green with default vendored-freetype. Glyph atlas not wired. COLR/FT_Error_String ABI vs freetype-sys 0.20 unproven at runtime."
     }
   ],
   "blockers": [],
@@ -241,6 +296,8 @@
     "cli_spawn": "yes",
     "min_usable_chrome": "yes_not_a_terminal",
     "user_try": "yes",
-    "live_pty_text_paint": "compile_yes_not_user_tried"
+    "live_pty_text_paint": "superseded_by_mux",
+    "mux_cmd_exe_text_paint": "compile_yes_not_user_tried",
+    "wezterm_font_sys_freetype": "compile_yes_not_used_for_paint"
   }
 }

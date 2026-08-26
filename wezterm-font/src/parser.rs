@@ -148,13 +148,13 @@ fn best_name(records: &[crate::ftwrap::NameRecord]) -> String {
 
     for rec in records {
         match rec.platform_id as u32 {
-            freetype::TT_PLATFORM_APPLE_UNICODE | freetype::TT_PLATFORM_ISO => {
+            crate::ft_crate::TT_PLATFORM_APPLE_UNICODE | crate::ft_crate::TT_PLATFORM_ISO => {
                 uni.replace(rec);
             }
-            freetype::TT_PLATFORM_MACINTOSH => {
+            crate::ft_crate::TT_PLATFORM_MACINTOSH => {
                 apple.replace(rec);
             }
-            freetype::TT_PLATFORM_MICROSOFT => {
+            crate::ft_crate::TT_PLATFORM_MICROSOFT => {
                 let is_english = (rec.language_id & 0x3ff) == 0x9;
                 if is_english {
                     return rec.name.clone();
@@ -224,8 +224,8 @@ impl Names {
         let family = name_from_table(
             &names,
             &[
-                freetype::TT_NAME_ID_TYPOGRAPHIC_FAMILY,
-                freetype::TT_NAME_ID_FONT_FAMILY,
+                crate::ft_crate::TT_NAME_ID_TYPOGRAPHIC_FAMILY,
+                crate::ft_crate::TT_NAME_ID_FONT_FAMILY,
             ],
         )
         .unwrap_or_else(|| face.family_name());
@@ -233,13 +233,13 @@ impl Names {
         let sub_family = name_from_table(
             &names,
             &[
-                freetype::TT_NAME_ID_TYPOGRAPHIC_SUBFAMILY,
-                freetype::TT_NAME_ID_FONT_SUBFAMILY,
+                crate::ft_crate::TT_NAME_ID_TYPOGRAPHIC_SUBFAMILY,
+                crate::ft_crate::TT_NAME_ID_FONT_SUBFAMILY,
             ],
         )
         .unwrap_or_else(|| face.style_name());
 
-        let postscript_name = name_from_table(&names, &[freetype::TT_NAME_ID_PS_NAME])
+        let postscript_name = name_from_table(&names, &[crate::ft_crate::TT_NAME_ID_PS_NAME])
             .unwrap_or_else(|| face.postscript_name());
 
         let full_name = if sub_family.is_empty() {
@@ -251,8 +251,8 @@ impl Names {
         let mut aliases = names_from_table(
             &names,
             &[
-                freetype::TT_NAME_ID_TYPOGRAPHIC_FAMILY,
-                freetype::TT_NAME_ID_FONT_FAMILY,
+                crate::ft_crate::TT_NAME_ID_TYPOGRAPHIC_FAMILY,
+                crate::ft_crate::TT_NAME_ID_FONT_FAMILY,
             ],
         );
         aliases.retain(|n| *n != full_name && *n != family);

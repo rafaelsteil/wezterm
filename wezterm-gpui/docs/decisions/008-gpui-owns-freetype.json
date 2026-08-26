@@ -1,0 +1,7 @@
+{
+  "id": "008-gpui-owns-freetype",
+  "at": "2026-08-26T21:20:00Z",
+  "decision": "gpui_graph_owns_freetype_sys",
+  "rationale": "wezterm-font can live in wezterm-gpui only if that graph has a single `links = \"freetype\"` crate. GPUI's font-kit already uses freetype-sys 0.20.1. wezterm-gui keeps vendored deps/freetype. Isolated workspaces stay; the GPUI workspace compiles wezterm-font with feature sys-freetype (bindgen via gpui-freetype, no freetype-sys dep on that shim so the root lockfile does not gain a second links crate).",
+  "adr": "docs/adr/0003-gpui-owns-freetype.md"
+}

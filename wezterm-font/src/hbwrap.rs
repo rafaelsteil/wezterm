@@ -1,5 +1,5 @@
 //! Higher level harfbuzz bindings
-use freetype;
+use crate::ft_crate as freetype;
 
 pub use harfbuzz::*;
 

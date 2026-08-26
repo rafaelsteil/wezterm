@@ -7,8 +7,17 @@ links = "harfbuzz"
 build = "build.rs"
 publish = false
 
+[features]
+default = ["vendored-freetype"]
+# Compile HarfBuzz against WezTerm's vendored FreeType (`deps/freetype`).
+vendored-freetype = ["dep:freetype"]
+# Compile HarfBuzz against GPUI's `freetype-sys` (headers + `freetype2` lib).
+# This feature must not depend on the `freetype-sys` crate: that would put
+# `links = "freetype"` into the root wezterm-gui graph.
+sys-freetype = []
+
 [dependencies]
-freetype.workspace = true
+freetype = { workspace = true, optional = true }
 
 [build-dependencies]
 cc.workspace = true

@@ -1,4 +1,4 @@
-//! Sibling-window app chrome. Not a terminal; the glyph renderer stays in wezterm-gui.
+//! Sibling-window app chrome. Shells are mux `LocalPane` (cmd.exe); glyphs stay in wezterm-gui.
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -372,7 +372,7 @@ impl Render for AppShell {
                                 .text_size(px(13.)),
                         )
                         .child(
-                            Label::new("POC chrome — live PTY, not the glyph atlas")
+                            Label::new("POC chrome — mux LocalPane cmd.exe, not the glyph atlas")
                                 .text_size(px(12.))
                                 .text_color(cx.theme().muted_foreground),
                         ),
@@ -427,7 +427,7 @@ impl Render for AppShell {
                     .border_color(cx.theme().border)
                     .child(
                         Label::new(format!(
-                            "Ctrl+Shift+P palette  ·  {}  ·  live PTY in chrome (not wezterm-gui glyphs)",
+                            "Ctrl+Shift+P palette  ·  {}  ·  mux LocalDomain cmd.exe (not wezterm-gui glyphs)",
                             status_title
                         ))
                         .text_size(px(11.))

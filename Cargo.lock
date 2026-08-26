@@ -2288,6 +2288,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui-freetype"
+version = "0.1.0"
+dependencies = [
+ "fixed",
+]
+
+[[package]]
 name = "guillotiere"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7075,6 +7082,7 @@ dependencies = [
  "finl_unicode",
  "fontconfig",
  "freetype",
+ "gpui-freetype",
  "harfbuzz",
  "image",
  "k9",

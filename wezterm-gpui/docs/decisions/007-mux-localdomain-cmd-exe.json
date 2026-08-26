@@ -1,0 +1,6 @@
+{
+  "id": "007-mux-localdomain-cmd-exe",
+  "at": "2026-08-26T18:10:00Z",
+  "decision": "gpui_shell_via_mux_localdomain",
+  "rationale": "The previous GPUI pane spawned portable-pty + wezterm-term itself. Those are WezTerm crates, but not the wezterm-gui host: wezterm-gui goes through mux LocalDomain::spawn_pane → LocalPane. User asked to render cmd.exe with that same engine/module. Path-dep mux (and config/lua) from the isolated crate; still no wezterm-gui, window/, or wezterm-font. Paint remains Consolas GPUI text, not the glyph atlas."
+}

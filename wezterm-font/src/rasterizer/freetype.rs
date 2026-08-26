@@ -12,7 +12,7 @@ use crate::rasterizer::harfbuzz::{argb_to_rgba, HarfbuzzRasterizer};
 use crate::rasterizer::{FontRasterizer, FAKE_ITALIC_SKEW};
 use crate::units::*;
 use crate::{ftwrap, FontRasterizerSelection, RasterizedGlyph};
-use ::freetype::{
+use crate::ft_crate::{
     FT_Color_Root_Transform, FT_GlyphSlotRec_, FT_Matrix, FT_Opaque_Paint_, FT_PaintFormat_,
 };
 use anyhow::{bail, Context as _};

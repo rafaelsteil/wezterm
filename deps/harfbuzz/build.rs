@@ -34,28 +34,63 @@ fn harfbuzz() {
         cfg.define("HAVE_SYS_MMAN_H", None);
     }
 
-    // We know that these are present in our vendored freetype
     cfg.define("HAVE_FREETYPE", Some("1"));
-
     cfg.define("HAVE_FT_GET_VAR_BLEND_COORDINATES", Some("1"));
     cfg.define("HAVE_FT_SET_VAR_BLEND_COORDINATES", Some("1"));
     cfg.define("HAVE_FT_DONE_MM_VAR", Some("1"));
     cfg.define("HAVE_FT_GET_TRANSFORM", Some("1"));
 
-    // Import the include dirs exported from deps/freetype/build.rs
-    for inc in std::env::var("DEP_FREETYPE_INCLUDE").unwrap().split(';') {
-        cfg.include(inc);
+    if env::var("CARGO_FEATURE_SYS_FREETYPE").is_ok() {
+        let inc = find_freetype_sys_include();
+        cfg.include(&inc);
+        // Do not `rustc-link-lib` here. GPUI's `freetype-sys` already owns
+        // `links = "freetype"` and emits the `freetype2` link.
+    } else {
+        // Import the include dirs exported from deps/freetype/build.rs
+        for inc in std::env::var("DEP_FREETYPE_INCLUDE").unwrap().split(';') {
+            cfg.include(inc);
+        }
+
+        println!(
+            "cargo:rustc-link-search={}",
+            std::env::var("DEP_FREETYPE_LIB").unwrap()
+        );
+        println!("cargo:rustc-link-lib=freetype");
+        println!("cargo:rustc-link-lib=png");
+        println!("cargo:rustc-link-lib=z");
     }
 
-    println!(
-        "cargo:rustc-link-search={}",
-        std::env::var("DEP_FREETYPE_LIB").unwrap()
-    );
-    println!("cargo:rustc-link-lib=freetype");
-    println!("cargo:rustc-link-lib=png");
-    println!("cargo:rustc-link-lib=z");
-
     cfg.compile("harfbuzz");
+}
+
+fn find_freetype_sys_include() -> PathBuf {
+    if let Ok(p) = env::var("WEZTERM_FREETYPE_SYS_INCLUDE") {
+        return PathBuf::from(p);
+    }
+    let cargo_home = env::var("CARGO_HOME").map(PathBuf::from).unwrap_or_else(|_| {
+        let home = env::var("USERPROFILE")
+            .or_else(|_| env::var("HOME"))
+            .expect("HOME or USERPROFILE");
+        PathBuf::from(home).join(".cargo")
+    });
+    let src_root = cargo_home.join("registry").join("src");
+    if let Ok(indexes) = std::fs::read_dir(&src_root) {
+        for index in indexes.flatten() {
+            let candidate = index
+                .path()
+                .join("freetype-sys-0.20.1")
+                .join("freetype2")
+                .join("include");
+            if candidate.join("ft2build.h").is_file() {
+                return candidate;
+            }
+        }
+    }
+    panic!(
+        "harfbuzz sys-freetype: could not find freetype-sys-0.20.1 headers under {}. \
+         Set WEZTERM_FREETYPE_SYS_INCLUDE to .../freetype-sys-0.20.1/freetype2/include",
+        src_root.display()
+    );
 }
 
 fn git_submodule_update() {

@@ -8,6 +8,13 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
+default = ["vendored-freetype", "native-fontconfig"]
+# wezterm-gui: compile against vendored `deps/freetype` (`links = "freetype"`).
+vendored-freetype = ["dep:freetype", "harfbuzz/vendored-freetype"]
+# wezterm-gpui: compile against `freetype-sys` via `gpui-freetype` (GPUI owns FreeType).
+sys-freetype = ["dep:gpui-freetype", "harfbuzz/sys-freetype"]
+# Unix font locator. Off in wezterm-gpui so GPUI's fontconfig-sys can own `links = "fontconfig"`.
+native-fontconfig = ["dep:fontconfig"]
 vendor-jetbrains = []
 vendor-roboto = []
 vendor-noto-emoji = []
@@ -21,8 +28,9 @@ encoding_rs.workspace = true
 enum-display-derive.workspace = true
 euclid.workspace = true
 finl_unicode.workspace = true
-freetype.workspace = true
-harfbuzz.workspace = true
+freetype = { workspace = true, optional = true }
+gpui-freetype = { path = "../deps/freetype-from-sys", optional = true }
+harfbuzz = { path = "../deps/harfbuzz", default-features = false }
 image.workspace = true
 lazy_static.workspace = true
 lfucache.workspace = true
@@ -41,7 +49,7 @@ wezterm-term = { workspace=true, features=["use_serde"] }
 wezterm-toast-notification.workspace = true
 
 [target.'cfg(any(target_os = "android", all(unix, not(target_os = "macos"))))'.dependencies]
-fontconfig.workspace = true
+fontconfig = { workspace = true, optional = true }
 
 [target."cfg(windows)".dependencies]
 dwrote.workspace = true

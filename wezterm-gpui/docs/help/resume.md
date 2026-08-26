@@ -21,7 +21,13 @@ target\debug\wezterm.exe gpui --hello
 
 `wezterm-gpui` is **not** a member of the root WezTerm workspace (`freetype` `links` conflict). Do not use `cargo check -p wezterm-gpui` from the repo root.
 
-`--hello` is the button smoke window. Default is the app chrome shell (tabs + **live PTY pane** + Ctrl+Shift+P palette + confirm/prompt dialogs).
+`--hello` is the button smoke window. Default is the app chrome shell (tabs + **mux LocalPane cmd.exe** + Ctrl+Shift+P palette + confirm/prompt dialogs). Paint is GPUI Consolas text, not wezterm-gui glyphs. `wezterm-font` is in the graph (`sys-freetype`); glyph atlas not wired.
+
+Also check default fonts after `wezterm-font` feature edits:
+
+```powershell
+cargo check -p wezterm-font
+```
 
 `wezterm gpui` spawns `wezterm-gpui` as a **child process** (search: `WEZTERM_GPUI`, next to `wezterm.exe`, then `wezterm-gpui/target/{debug,release}`). It does not start `wezterm-gui`.
 
@@ -35,6 +41,7 @@ Do not run workspace-wide `cargo build` or `cargo test` for this crate. Do not `
 - Use Zed official GPUI git (`zed-industries/zed`), not gpui-ce, plus `gpui-component`.
 - Pin git SHAs in `STATE.json` `pins` once a pair compiles.
 - New plans go in `wezterm-gpui/docs/plans/`, not only `.cursor/plans/`.
+- GPUI graph: only `freetype-sys` owns FreeType (`wezterm-font` `sys-freetype`). Do not crate-depend on `freetype-sys` from `gpui-freetype` or HarfBuzz (poisons the root lockfile).
 
 ## Write-back
 
