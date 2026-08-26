@@ -18,6 +18,7 @@ use wezterm_gui_subcommands::*;
 
 mod asciicast;
 mod cli;
+mod gpui_launch;
 
 //    let message = "; ❤ 😍🤢\n\x1b[91;mw00t\n\x1b[37;104;m bleet\x1b[0;m.";
 
@@ -142,6 +143,10 @@ enum SubCommand {
         #[arg(long, value_parser)]
         shell: Shell,
     },
+
+    /// Experimental GPUI POC window (separate process; does not replace wezterm-gui)
+    #[command(name = "gpui")]
+    Gpui(gpui_launch::GpuiCommand),
 }
 
 use termwiz::escape::osc::{
@@ -762,6 +767,7 @@ fn run() -> anyhow::Result<()> {
             generate_completion(shell, &mut cmd, name, &mut std::io::stdout());
             Ok(())
         }
+        SubCommand::Gpui(cmd) => gpui_launch::run(cmd),
     }
 }
 

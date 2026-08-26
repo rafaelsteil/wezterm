@@ -1,0 +1,26 @@
+[package]
+name = "wezterm-gpui"
+version = "0.1.0"
+authors = ["Wez Furlong <wez@wezfurlong.org>"]
+edition = "2024"
+publish = false
+description = "GPUI proof-of-concept frontend for WezTerm (does not replace wezterm-gui)"
+
+# Isolated workspace: cannot join the WezTerm workspace because GPUI's
+# font-kit depends on freetype-sys (`links = "freetype"`) and WezTerm vendors
+# its own freetype with the same links key.
+[workspace]
+
+[dependencies]
+anyhow = "1.0"
+async-channel = "2.3"
+# Do not put `rev` on these: gpui-component depends on the same git URL without
+# `rev`. Mixing `?rev=` and unpinned git duplicates gpui in the graph.
+# Zed SHA is pinned in Cargo.lock (see docs/STATE.json pins.gpui_rev).
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
+# Terminal model + PTY only. Do not depend on mux, wezterm-gui, window, or
+# wezterm-font (freetype `links` conflict with GPUI's freetype-sys).
+portable-pty = { path = "../pty" }
+wezterm-term = { path = "../term" }

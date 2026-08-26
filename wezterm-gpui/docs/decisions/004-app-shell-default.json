@@ -1,0 +1,6 @@
+{
+  "id": "004-app-shell-default",
+  "at": "2026-08-26T17:00:00Z",
+  "decision": "default_window_is_app_shell",
+  "rationale": "A standalone palette is a widget demo, not a minimum usable GUI. Default wezterm-gpui window is TitleBar + TabBar + placeholder pane + Ctrl+Shift+P palette overlay. Still no mux, no glyph renderer, no window/ cutover. --hello stays the smoke window."
+}

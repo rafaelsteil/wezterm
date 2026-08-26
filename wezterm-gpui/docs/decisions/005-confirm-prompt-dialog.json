@@ -1,0 +1,6 @@
+{
+  "id": "005-confirm-prompt-dialog",
+  "at": "2026-08-26T17:40:00Z",
+  "decision": "confirm_prompt_uses_gpui_component_dialog",
+  "rationale": "Next smallest chrome surface after the approved app shell. Confirm uses WindowExt::open_alert_dialog (AlertDialog); line prompt uses WindowExt::open_dialog + Input. POC only: close tab / quit / rename fake tab. No mux, no termwiz overlay, no window/ cutover. Legacy wezterm-gui overlay/confirm.rs and overlay/prompt.rs stay untouched."
+}

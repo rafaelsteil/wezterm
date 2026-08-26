@@ -1,0 +1,6 @@
+{
+  "id": "002-gpui-rev-duplicates-crate",
+  "at": "2026-08-26T14:50:00Z",
+  "decision": "pin_zed_via_lockfile_not_rev_on_gpui_deps",
+  "rationale": "Cargo.toml rev on gpui/gpui_platform while gpui-component uses unpinned zed git created two gpui crates (Styled/Entity/Window type mismatch). Pin gpui-component by rev; pin Zed SHA in Cargo.lock and STATE.json only."
+}

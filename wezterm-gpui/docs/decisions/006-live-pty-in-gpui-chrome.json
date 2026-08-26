@@ -1,0 +1,6 @@
+{
+  "id": "006-live-pty-in-gpui-chrome",
+  "at": "2026-08-26T17:55:00Z",
+  "decision": "live_pty_via_wezterm_term_not_mux",
+  "rationale": "User asked to render the actual shell inside GPUI chrome. Spawn portable-pty + wezterm-term in the isolated crate (path deps). Do not take mux (lua/config) or wezterm-font (freetype links). Paint visible cells as Consolas GPUI text, not the wezterm-gui glyph atlas. No window/ cutover, no in-process wezterm-gui loop."
+}

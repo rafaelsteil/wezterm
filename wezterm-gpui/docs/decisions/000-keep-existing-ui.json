@@ -1,0 +1,7 @@
+{
+  "id": "000-keep-existing-ui",
+  "at": "2026-08-26T14:30:00Z",
+  "decision": "sibling_crate_does_not_replace_wezterm_gui",
+  "rationale": "POC must not drop custom window/box-model/termwiz UI. wezterm-gpui is additive.",
+  "adr": "docs/adr/0001-use-zed-official-gpui.md"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "001-isolated-cargo-workspace",
+  "at": "2026-08-26T14:35:00Z",
+  "decision": "wezterm_gpui_own_workspace",
+  "rationale": "cargo check in the WezTerm workspace failed: zed-font-kit -> freetype-sys (^0.20) links=freetype conflicts with deps/freetype used by wezterm-font. Only one package in a graph may use the same links value. Exclude wezterm-gpui from the root workspace and give it its own Cargo.lock.",
+  "commands": {
+    "check": "cargo check --manifest-path wezterm-gpui/Cargo.toml"
+  }
+}

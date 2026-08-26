@@ -1,0 +1,6 @@
+{
+  "id": "003-wezterm-gpui-cli-spawn",
+  "at": "2026-08-26T15:05:00Z",
+  "decision": "wezterm_gpui_subcommand_spawns_child",
+  "rationale": "Prove process-split without sharing event loops. `wezterm gpui` execs/spawns wezterm-gpui.exe. Does not go through wezterm-gui. WEZTERM_GPUI overrides the binary path."
+}

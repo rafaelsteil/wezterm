@@ -1,0 +1,246 @@
+{
+  "id": "wezterm-gpui-migration",
+  "schema_version": 1,
+  "updated": "2026-08-26T17:55:00Z",
+  "status": "in_progress",
+  "current_phase": "live-pty",
+  "next": [
+    {
+      "id": "user-try-live-pty",
+      "action": "User try live PTY in the app shell (type, Ctrl+T new tab, resize). Then cell-paint Element, charselect, or palette keyboard polish.",
+      "blocked_by": []
+    },
+    {
+      "id": "window-cutover",
+      "action": "Not this POC. Replacing window/ with gpui_platform is the real migration; only start after explicit go-ahead.",
+      "blocked_by": []
+    }
+  ],
+  "phases": [
+    {
+      "id": "state-doc",
+      "status": "done",
+      "notes": "docs/ tree + .cursor/rules/gpui-migration.mdc + docs/HANDOFF.md"
+    },
+    {
+      "id": "dep-spike",
+      "status": "done",
+      "notes": "Isolated workspace. cargo check --manifest-path wezterm-gpui/Cargo.toml green on Windows. Root workspace member failed on freetype links conflict."
+    },
+    {
+      "id": "hello-window",
+      "status": "done",
+      "notes": "HelloWorld view compiles. E2E: wezterm gpui --hello opened HWND titled WezTerm GPUI - Hello, then closed."
+    },
+    {
+      "id": "palette-replica",
+      "status": "done",
+      "notes": "CommandPalette is an overlay card in AppShell (Ctrl+Shift+P). Input + filtered hardcoded commands. Some mutate POC chrome; others notify only. User executed commands from it 2026-08-26."
+    },
+    {
+      "id": "ipc-launch",
+      "status": "done",
+      "notes": "wezterm gpui spawns wezterm-gpui as a child. cargo build -p wezterm + cargo build --manifest-path wezterm-gpui/Cargo.toml. E2E: wezterm gpui and wezterm gpui --hello both found wezterm-gpui\\target\\debug\\wezterm-gpui.exe via current_exe relative path and opened HWNDs."
+    },
+    {
+      "id": "app-shell",
+      "status": "done",
+      "notes": "User tried target\\debug\\wezterm.exe gpui 2026-08-26 and said it looks good. Palette commands New Tab / Close tab / font size / Clear scrollback / Quit mutate the POC chrome. Copy/split/etc. notify only. Not a PTY or glyph renderer."
+    },
+    {
+      "id": "confirm-prompt-dialog",
+      "status": "done",
+      "notes": "AlertDialog confirm + Dialog+Input prompt in AppShell. Close tab (and last tab → quit confirm), Ctrl+Q, palette Rename tab / Prompt confirmation / Prompt line of text. cargo check and cargo build --manifest-path wezterm-gpui/Cargo.toml green. Not user-tried yet. No mux."
+    },
+    {
+      "id": "poc-chrome",
+      "status": "in_progress",
+      "notes": "Chrome still evolving. Confirm/prompt done. Live PTY text paint in pane. Next after user try: charselect, palette keyboard, or glyph Element."
+    },
+    {
+      "id": "live-pty",
+      "status": "done",
+      "notes": "portable-pty + wezterm-term path deps in isolated crate. Per-tab default shell. GPUI Consolas text of visible cells. cargo check and cargo build --manifest-path wezterm-gpui/Cargo.toml green. Not user-tried. No mux, no glyph atlas."
+    },
+    {
+      "id": "window-cutover",
+      "status": "pending",
+      "notes": "replace window/ with gpui_platform — not this POC"
+    },
+    {
+      "id": "terminal-element",
+      "status": "pending",
+      "notes": "custom GPUI Element for glyph atlas — after live PTY text paint; not mux"
+    },
+    {
+      "id": "delete-old-ui",
+      "status": "pending",
+      "notes": "after parity only"
+    }
+  ],
+  "decisions": [
+    {
+      "at": "2026-08-26T14:25:00Z",
+      "decision": "use_zed_gpui_not_gpui_ce",
+      "rationale": "gpui-component tracks Zed git; gpui-ce patch was extra risk",
+      "adr": "docs/adr/0001-use-zed-official-gpui.md"
+    },
+    {
+      "at": "2026-08-26T14:25:00Z",
+      "decision": "docs_live_under_wezterm_gpui_docs",
+      "rationale": "plans, help, ADRs, decisions, STATE.json colocated with the crate"
+    },
+    {
+      "at": "2026-08-26T14:35:00Z",
+      "decision": "wezterm_gpui_own_workspace",
+      "rationale": "freetype links conflict with WezTerm vendored freetype",
+      "adr": "docs/adr/0002-isolated-cargo-workspace.md"
+    },
+    {
+      "at": "2026-08-26T14:50:00Z",
+      "decision": "pin_zed_via_lockfile_not_rev_on_gpui_deps",
+      "rationale": "Cargo.toml rev on gpui duplicated the crate against gpui-component's unpinned zed git"
+    },
+    {
+      "at": "2026-08-26T15:05:00Z",
+      "decision": "wezterm_gpui_subcommand_spawns_child",
+      "rationale": "Process-split proof: wezterm gpui does not enter wezterm-gui"
+    },
+    {
+      "at": "2026-08-26T17:00:00Z",
+      "decision": "default_window_is_app_shell",
+      "rationale": "Standalone palette was a widget demo. Minimum usable chrome is TitleBar+TabBar+placeholder pane+palette overlay. Still no mux/renderer.",
+      "record": "docs/decisions/004-app-shell-default.json"
+    },
+    {
+      "at": "2026-08-26T17:40:00Z",
+      "decision": "confirm_prompt_uses_gpui_component_dialog",
+      "rationale": "Replica of termwiz confirm/prompt overlays with gpui-component Dialog in the sibling shell. No mux.",
+      "record": "docs/decisions/005-confirm-prompt-dialog.json"
+    },
+    {
+      "at": "2026-08-26T17:55:00Z",
+      "decision": "live_pty_via_wezterm_term_not_mux",
+      "rationale": "User asked for actual shell in GPUI chrome. portable-pty + wezterm-term path deps; text paint; no mux/font/window.",
+      "record": "docs/decisions/006-live-pty-in-gpui-chrome.json"
+    }
+  ],
+  "constraints": [
+    "existing_ui_must_keep_working",
+    "no_in_process_event_loop_sharing",
+    "poc_shortcuts_ok"
+  ],
+  "pins": {
+    "gpui_git": "https://github.com/zed-industries/zed",
+    "gpui_rev": "fecc3273ed32643c2ea1b04a74c8780e2c9ffaf8",
+    "gpui_component_git": "https://github.com/longbridge/gpui-component",
+    "gpui_component_rev": "ff3eb1128ac1058f1bb88e777744ce1237aa3b79"
+  },
+  "toolchain": {
+    "rustc": "1.97.1",
+    "host": "x86_64-pc-windows-msvc"
+  },
+  "commands": {
+    "check": "cargo check --manifest-path wezterm-gpui/Cargo.toml",
+    "run": "cargo run --manifest-path wezterm-gpui/Cargo.toml",
+    "run_hello": "cargo run --manifest-path wezterm-gpui/Cargo.toml -- --hello",
+    "wezterm_gpui": "wezterm gpui"
+  },
+  "surfaces": {
+    "hello": {
+      "status": "poc_standalone",
+      "gpui": "wezterm-gpui/src/hello.rs",
+      "e2e": "wezterm gpui --hello → HWND WezTerm GPUI - Hello"
+    },
+    "command_palette": {
+      "status": "poc_overlay",
+      "legacy": "wezterm-gui/src/termwindow/palette.rs",
+      "gpui": "wezterm-gpui/src/palette.rs",
+      "e2e": "Ctrl+Shift+P inside the app shell; some commands mutate POC tabs/font/quit"
+    },
+    "app_shell": {
+      "status": "poc_standalone",
+      "gpui": "wezterm-gpui/src/shell.rs",
+      "e2e": "target\\debug\\wezterm.exe gpui → HWND WezTerm GPUI; user-tried and approved 2026-08-26"
+    },
+    "confirm_prompt": {
+      "status": "poc_overlay",
+      "legacy": "wezterm-gui/src/overlay/confirm.rs + overlay/prompt.rs",
+      "gpui": "wezterm-gpui/src/confirm.rs",
+      "e2e": "Ctrl+W / tab close / Ctrl+Q / palette Rename tab — compile+build green, not yet user-tried"
+    },
+    "live_pty": {
+      "status": "poc_text_paint",
+      "legacy": "mux LocalPane + wezterm-gui glyph renderer",
+      "gpui": "wezterm-gpui/src/term_pane.rs",
+      "e2e": "compile+build green; default shell via portable-pty; not yet user-tried"
+    }
+  },
+  "findings": [
+    {
+      "at": "2026-08-26T14:35:00Z",
+      "id": "freetype_links_conflict",
+      "detail": "Cannot join root workspace: zed-font-kit freetype-sys vs deps/freetype both links=freetype."
+    },
+    {
+      "at": "2026-08-26T14:40:00Z",
+      "id": "gpui_component_no_command_palette_widget",
+      "detail": "No dedicated CommandPalette component; POC uses Input + filtered clickable rows. Notifications need WindowExt and Notification::info."
+    },
+    {
+      "at": "2026-08-26T14:40:00Z",
+      "id": "rustc_ok",
+      "detail": "rustc 1.97.1 satisfies gpui-component 1.90+ requirement. WezTerm docs still say 1.71."
+    },
+    {
+      "at": "2026-08-26T14:40:00Z",
+      "id": "check_green_isolated",
+      "detail": "cargo check in wezterm-gpui succeeded after isolating the workspace. First resolve pulled ~844 packages."
+    },
+    {
+      "at": "2026-08-26T14:50:00Z",
+      "id": "gpui_rev_duplicates_crate",
+      "detail": "Putting rev= on gpui/gpui_platform while gpui-component uses unpinned zed git duplicates gpui (two Styled/Entity types). Pin gpui-component rev in Cargo.toml; pin Zed via Cargo.lock."
+    },
+    {
+      "at": "2026-08-26T15:00:00Z",
+      "id": "runtime_window_ok",
+      "detail": "wezterm-gpui.exe opened an HWND titled WezTerm GPUI - Command Palette (MainWindowHandle non-zero). D3D11/GPUI event loop works on this Windows host."
+    },
+    {
+      "at": "2026-08-26T16:40:00Z",
+      "id": "e2e_cli_ok",
+      "detail": "cargo build -p wezterm and cargo build --manifest-path wezterm-gpui/Cargo.toml. wezterm gpui --hello → child wezterm-gpui.exe, HWND WezTerm GPUI - Hello. wezterm gpui → same binary, HWND WezTerm GPUI - Command Palette. Binary resolved to wezterm-gpui/target/debug/wezterm-gpui.exe from wezterm.exe current_exe relative path. Default wezterm-gui not started. Windows GetWindowText shows ASCII hyphen even though source title uses an em dash."
+    },
+    {
+      "at": "2026-08-26T17:00:00Z",
+      "id": "min_usable_is_chrome_not_terminal",
+      "detail": "Minimum usable GUI for this POC is chrome (tabs, title bar, palette overlay), not a working shell. Terminal cells and PTY remain in wezterm-gui. Default binary window changed from standalone palette to AppShell."
+    },
+    {
+      "at": "2026-08-26T17:10:00Z",
+      "id": "user_try_shell_ok",
+      "detail": "User launched target\\debug\\wezterm.exe gpui, used the palette (Copy to clipboard, Split pane horizontally — notify-only commands), and said the app shell looks good. Those two commands do not mutate chrome; New Tab / font size / quit do."
+    },
+    {
+      "at": "2026-08-26T17:40:00Z",
+      "id": "dialog_builder_is_fn_needs_rc",
+      "detail": "gpui-component Root stores the open_dialog/open_alert_dialog builder as Fn and re-runs it each render. Callbacks and titles must be Clone (Rc for on_ok). Dialog does not auto-build a footer from button_props; AlertDialog.build_surface does. Prompt footer uses DialogFooter + DialogClose + DialogAction."
+    },
+    {
+      "at": "2026-08-26T17:55:00Z",
+      "id": "path_dep_term_pty_ok_no_freetype",
+      "detail": "wezterm-gpui path-deps portable-pty and wezterm-term. Isolated workspace still compiles; wezterm-term inherits root workspace.dependencies by walking up. Did not pull wezterm-font/freetype. mux skipped (config/lua). Screen::visible_lines is cfg(test) only; POC uses for_each_phys_line sliding window of physical_rows."
+    }
+  ],
+  "blockers": [],
+  "go_nogo": {
+    "in_process_embed": "no",
+    "continue_poc": "yes_isolated_workspace",
+    "runtime_window": "yes",
+    "cli_spawn": "yes",
+    "min_usable_chrome": "yes_not_a_terminal",
+    "user_try": "yes",
+    "live_pty_text_paint": "compile_yes_not_user_tried"
+  }
+}
