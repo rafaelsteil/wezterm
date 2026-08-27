@@ -7,6 +7,7 @@
 #[allow(unused_imports)]
 use freetype_sys as _;
 
+mod boxdraw;
 mod confirm;
 mod glyph_paint;
 mod hello;
@@ -17,4 +18,4 @@ mod term_pane;
 
 pub use hello::HelloWorld;
 pub use palette::CommandPalette;
-pub use shell::{bind_keys, AppShell};
+pub use shell::{AppShell, bind_keys};

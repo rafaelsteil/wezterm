@@ -5,8 +5,8 @@
 //! (cached `paint_image` + cell quads). Consolas GPUI text is the fallback
 //! if FreeType/shaper init fails. Not the wezterm-gui glyph atlas.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui::*;
 use gpui_component::StyledExt;
@@ -46,9 +46,15 @@ pub struct TermPane {
     pty_commit_gen: u64,
     /// Skip HarfBuzz + row composite when the pane has not changed.
     paint_cache: Option<PaintCache>,
+    /// Last `window.scale_factor()` from prepaint. Line-sprite dest must use
+    /// this exact value (not `round(96*scale)/96`) or 4K rows paint as slivers.
+    paint_scale: f32,
     /// GUI-side selection (same model as wezterm-gui `TermWindow.selection`).
     /// Not stored in the mux pane.
     selection: Selection,
+    /// AppShell's focus handle. TermScreen swallows left-click, so we
+    /// focus the shell here or typing stays dead until a right-click bubbles.
+    shell_focus: FocusHandle,
 }
 
 struct PaintCache {
@@ -59,12 +65,13 @@ struct PaintCache {
     rows: usize,
     dpi: u32,
     font_px: u32,
+    scale: u32,
     sel: Option<(i64, u32, i64, u32)>,
     paint: TermPaint,
 }
 
 impl TermPane {
-    pub fn spawn(font_px: f32, cx: &mut Context<Self>) -> Self {
+    pub fn spawn(font_px: f32, shell_focus: FocusHandle, cx: &mut Context<Self>) -> Self {
         let _ = crate::mux_host::ensure_init();
         let painter = match GlyphPainter::new(96) {
             Ok(p) => Some(p),
@@ -84,7 +91,9 @@ impl TermPane {
                 viewport: None,
                 pty_commit_gen: 0,
                 paint_cache: None,
+                paint_scale: 1.0,
                 selection: Selection::default(),
+                shell_focus,
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
@@ -96,7 +105,9 @@ impl TermPane {
                 viewport: None,
                 pty_commit_gen: 0,
                 paint_cache: None,
+                paint_scale: 1.0,
                 selection: Selection::default(),
+                shell_focus,
             },
         }
     }
@@ -321,22 +332,30 @@ impl TermPane {
             return false;
         }
         let origin = self.selection.origin.unwrap_or(hit.pos);
+        // wezterm-gui: Cell selection exists only after the hit leaves origin.
+        // Same-cell (click, or a MouseMove on the press) must not paint a 1-col box.
         let next = match self.selection.mode {
-            SelMode::Cell => SelRange {
-                start: origin,
-                end: hit.pos,
-            },
-            SelMode::Word => union_range(
+            SelMode::Cell => {
+                if origin == hit.pos {
+                    None
+                } else {
+                    Some(SelRange {
+                        start: origin,
+                        end: hit.pos,
+                    })
+                }
+            }
+            SelMode::Word => Some(union_range(
                 word_around(&*live.pane, origin),
                 word_around(&*live.pane, hit.pos),
-            ),
-            SelMode::Line => union_range(
+            )),
+            SelMode::Line => Some(union_range(
                 line_around(&*live.pane, origin),
                 line_around(&*live.pane, hit.pos),
-            ),
+            )),
         };
-        if self.selection.range != Some(next) {
-            self.selection.range = Some(next);
+        if self.selection.range != next {
+            self.selection.range = next;
             self.paint_cache = None;
             true
         } else {
@@ -352,7 +371,12 @@ impl TermPane {
         };
         if live.pane.is_mouse_grabbed() && !modifiers.shift && !was_dragging {
             if let Some(hit) = self.hit_cell(pos, bounds, true) {
-                self.send_pty_mouse(MouseEventKind::Release, TermMouseButton::Left, hit, modifiers);
+                self.send_pty_mouse(
+                    MouseEventKind::Release,
+                    TermMouseButton::Left,
+                    hit,
+                    modifiers,
+                );
             }
         }
     }
@@ -392,7 +416,11 @@ impl TermPane {
         }
         let mut x = f32::from(pos.x - bounds.origin.x);
         let mut y = f32::from(pos.y - bounds.origin.y);
-        if !clamp && (x < 0. || y < 0. || x >= f32::from(bounds.size.width) || y >= f32::from(bounds.size.height))
+        if !clamp
+            && (x < 0.
+                || y < 0.
+                || x >= f32::from(bounds.size.width)
+                || y >= f32::from(bounds.size.height))
         {
             return None;
         }
@@ -404,10 +432,7 @@ impl TermPane {
         let vis_row = vis_row.min(dims.viewport_rows.saturating_sub(1));
         let stable = self.paint_top(&dims).saturating_add(vis_row as isize);
         Some(CellHit {
-            pos: CellPos {
-                y: stable,
-                x: col,
-            },
+            pos: CellPos { y: stable, x: col },
             vis_row,
             x_pixel_offset: (x - col as f32 * cw) as isize,
             y_pixel_offset: (y - vis_row as f32 * ch) as isize,
@@ -431,6 +456,10 @@ impl TermPane {
         cx: &mut Context<Self>,
     ) {
         let dpi = dpi_from_scale(scale);
+        if (self.paint_scale - scale).abs() > 0.001 {
+            self.paint_cache = None;
+        }
+        self.paint_scale = scale.max(0.5);
         if let Some(painter) = &mut self.painter {
             painter.sync_font(self.font_px, dpi);
         }
@@ -600,7 +629,10 @@ impl TermPane {
         match &self.live {
             Ok(_) => {
                 let (lines, cursor, pal) = self.visible_lines();
-                let text: Vec<String> = lines.iter().map(|line| line.as_str().into_owned()).collect();
+                let text: Vec<String> = lines
+                    .iter()
+                    .map(|line| line.as_str().into_owned())
+                    .collect();
                 let (fr, fg, fb, _) = pal.foreground.as_rgba_u8();
                 let (br, bg, bb, _) = pal.background.as_rgba_u8();
                 let fg = u32::from_be_bytes([0, fr, fg, fb]);
@@ -628,6 +660,7 @@ impl TermPane {
         let cursor = vis_row.map(|row| (row, cursor_pos.x));
         let font_px = self.font_px.to_bits();
         let sel = self.selection.fingerprint();
+        let scale_bits = self.paint_scale.to_bits();
         if let Some(cache) = &self.paint_cache {
             if cache.seq == seq
                 && cache.top == top
@@ -636,6 +669,7 @@ impl TermPane {
                 && cache.rows == dims.viewport_rows
                 && cache.dpi == dims.dpi
                 && cache.font_px == font_px
+                && cache.scale == scale_bits
                 && cache.sel == sel
             {
                 let mut paint = cache.paint.clone();
@@ -650,13 +684,23 @@ impl TermPane {
             .map(|row| {
                 self.selection
                     .range
-                    .map(|r| r.normalize().sel_cols(top.saturating_add(row as isize), dims.cols))
+                    .map(|r| {
+                        r.normalize()
+                            .sel_cols(top.saturating_add(row as isize), dims.cols)
+                    })
                     .unwrap_or((u16::MAX, u16::MAX))
             })
             .collect();
         let painter = self.painter.as_mut()?;
-        painter.sync_font(self.font_px, painter.dpi());
-        match painter.layout(&lines, cursor, &pal, dims.cols, &sel_cols) {
+        painter.sync_font(self.font_px, dpi_from_scale(self.paint_scale));
+        match painter.layout(
+            &lines,
+            cursor,
+            &pal,
+            dims.cols,
+            &sel_cols,
+            self.paint_scale,
+        ) {
             Ok(paint) => {
                 self.paint_cache = Some(PaintCache {
                     seq,
@@ -666,6 +710,7 @@ impl TermPane {
                     rows: dims.viewport_rows,
                     dpi: dims.dpi,
                     font_px,
+                    scale: scale_bits,
                     sel,
                     paint: TermPaint {
                         bg: paint.bg,
@@ -985,7 +1030,9 @@ fn map_keystroke(ks: &Keystroke) -> Option<(KeyCode, KeyModifiers)> {
     }
 
     // Chrome shortcuts stay on AppShell actions; do not send them to the PTY.
-    if ks.modifiers.control && ks.modifiers.shift && matches!(ks.key.as_str(), "p" | "c" | "v" | "f")
+    if ks.modifiers.control
+        && ks.modifiers.shift
+        && matches!(ks.key.as_str(), "p" | "c" | "v" | "f")
     {
         return None;
     }
@@ -1027,7 +1074,12 @@ fn map_keystroke(ks: &Keystroke) -> Option<(KeyCode, KeyModifiers)> {
                     .key_char
                     .as_deref()
                     .and_then(|s| s.chars().next())
-                    .or_else(|| other.chars().next().filter(|c| c.is_ascii() && other.len() == 1))?;
+                    .or_else(|| {
+                        other
+                            .chars()
+                            .next()
+                            .filter(|c| c.is_ascii() && other.len() == 1)
+                    })?;
                 // Shift is already applied in key_char.
                 if ks.key_char.is_some() {
                     mods.remove(KeyModifiers::SHIFT);
@@ -1057,9 +1109,7 @@ impl Render for TermPane {
                     cx.stop_propagation();
                     cx.notify();
                 }))
-                .child(TermScreen {
-                    term: cx.entity(),
-                })
+                .child(TermScreen { term: cx.entity() })
                 .into_any_element();
         }
 
@@ -1091,13 +1141,11 @@ impl Render for TermPane {
                         line
                     };
                     let is_cursor = cursor_row == Some(row);
-                    div()
-                        .whitespace_nowrap()
-                        .child(if is_cursor {
-                            with_cursor_block(&display, cursor_col)
-                        } else {
-                            display
-                        })
+                    div().whitespace_nowrap().child(if is_cursor {
+                        with_cursor_block(&display, cursor_col)
+                    } else {
+                        display
+                    })
                 },
             )))
             .into_any_element()
@@ -1186,28 +1234,35 @@ impl Element for TermScreen {
             let entity = entity.clone();
             let hitbox = hitbox.clone();
             move |event: &MouseDownEvent, phase, window, cx| {
-                if phase != DispatchPhase::Bubble || event.button != MouseButton::Left {
+                if phase != DispatchPhase::Bubble {
                     return;
                 }
                 if !hitbox.is_hovered(window) {
                     return;
                 }
+                // Left-click used to stop_propagation before AppShell.track_focus
+                // ran, so typing stayed dead until a right-click bubbled. Focus
+                // the shell on any press in the pane.
                 entity.update(cx, |term, cx| {
-                    term.on_mouse_down(
-                        event.position,
-                        bounds,
-                        event.click_count,
-                        &event.modifiers,
-                    );
+                    window.focus(&term.shell_focus, cx);
+                    if event.button != MouseButton::Left {
+                        return;
+                    }
+                    term.on_mouse_down(event.position, bounds, event.click_count, &event.modifiers);
                     cx.notify();
                 });
-                cx.stop_propagation();
+                if event.button == MouseButton::Left {
+                    cx.stop_propagation();
+                }
             }
         });
         window.on_mouse_event({
             let entity = entity.clone();
             move |event: &MouseMoveEvent, phase, _, cx| {
                 if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                if event.pressed_button != Some(MouseButton::Left) {
                     return;
                 }
                 entity.update(cx, |term, cx| {

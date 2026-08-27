@@ -3,11 +3,11 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
+    ActiveTheme, IconName, Sizable, TitleBar, WindowExt,
     button::*,
     label::Label,
     notification::Notification,
     tab::{Tab, TabBar},
-    ActiveTheme, IconName, Sizable, TitleBar, WindowExt,
 };
 
 use crate::confirm::{open_confirm, open_line_prompt};
@@ -76,6 +76,9 @@ pub struct AppShell {
     /// gpui-fps HUD. Off by default (019). Ctrl+Shift+F toggles.
     /// While visible the stock monitor is continuous (sustain FPS).
     show_fps: bool,
+    /// Root wraps us after `new`; focus once on first paint so keys work
+    /// without a right-click.
+    focus_pending: bool,
 }
 
 impl Focusable for AppShell {
@@ -92,9 +95,13 @@ impl AppShell {
                 PaletteEvent::Executed(brief) => {
                     this.palette_open = false;
                     this.apply_command(brief, window, cx);
+                    if !this.palette_open && !window.has_active_dialog(cx) {
+                        this.focus_terminal(window, cx);
+                    }
                 }
                 PaletteEvent::Dismissed => {
                     this.palette_open = false;
+                    window.focus(&this.focus_handle, cx);
                 }
             }
             cx.notify();
@@ -102,20 +109,32 @@ impl AppShell {
         .detach();
 
         let font_px = crate::mux_host::config_font_size();
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle, cx);
+        window.activate_window();
         Self {
-            focus_handle: cx.focus_handle(),
-            tabs: vec![Self::new_tab(font_px, cx)],
+            focus_handle: focus_handle.clone(),
+            tabs: vec![Self::new_tab(font_px, focus_handle, cx)],
             active: 0,
             font_px,
             palette,
             palette_open: false,
             show_fps: false,
+            focus_pending: true,
         }
+    }
+
+    pub fn focus_terminal(&self, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus_handle, cx);
+        window.activate_window();
     }
 
     fn apply_command(&mut self, brief: &str, window: &mut Window, cx: &mut Context<Self>) {
         match brief {
-            "New Tab" => self.add_tab(cx),
+            "New Tab" => {
+                self.add_tab(cx);
+                self.focus_terminal(window, cx);
+            }
             "Close current tab" | "Close current pane" => self.confirm_close_active(window, cx),
             "Quit WezTerm" => self.confirm_quit(window, cx),
             "Increase font size" => self.bump_font(1., cx),
@@ -144,8 +163,8 @@ impl AppShell {
         }
     }
 
-    fn new_tab(font_px: f32, cx: &mut Context<Self>) -> ShellTab {
-        let term = cx.new(|cx| TermPane::spawn(font_px, cx));
+    fn new_tab(font_px: f32, shell_focus: FocusHandle, cx: &mut Context<Self>) -> ShellTab {
+        let term = cx.new(|cx| TermPane::spawn(font_px, shell_focus, cx));
         ShellTab {
             title_override: None,
             term,
@@ -153,7 +172,8 @@ impl AppShell {
     }
 
     fn add_tab(&mut self, cx: &mut Context<Self>) {
-        self.tabs.push(Self::new_tab(self.font_px, cx));
+        self.tabs
+            .push(Self::new_tab(self.font_px, self.focus_handle.clone(), cx));
         self.active = self.tabs.len() - 1;
     }
 
@@ -285,7 +305,12 @@ impl AppShell {
         cx.notify();
     }
 
-    fn toggle_palette(&mut self, _: &ToggleCommandPalette, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_palette(
+        &mut self,
+        _: &ToggleCommandPalette,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.palette_open {
             self.close_palette(window, cx);
         } else {
@@ -307,12 +332,18 @@ impl AppShell {
         self.palette.update(cx, |p, cx| p.move_sel(1, cx));
     }
 
-    fn on_palette_confirm(&mut self, _: &PaletteConfirm, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_palette_confirm(
+        &mut self,
+        _: &PaletteConfirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.palette.update(cx, |p, cx| p.confirm(window, cx));
     }
 
-    fn on_new_tab(&mut self, _: &NewTab, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
         self.add_tab(cx);
+        self.focus_terminal(window, cx);
         cx.notify();
     }
 
@@ -394,6 +425,10 @@ impl AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.focus_pending && !self.palette_open && !window.has_active_dialog(cx) {
+            self.focus_terminal(window, cx);
+            self.focus_pending = false;
+        }
         let active = self.active.min(self.tabs.len().saturating_sub(1));
         let term = self.tabs.get(active).map(|t| t.term.clone());
         let tab_titles: Vec<(usize, String)> = self
@@ -461,8 +496,9 @@ impl Render for AppShell {
             .child(
                 TabBar::new("tabs")
                     .selected_index(active)
-                    .on_click(cx.listener(|this, index, _, cx| {
+                    .on_click(cx.listener(|this, index, window, cx| {
                         this.active = *index;
+                        this.focus_terminal(window, cx);
                         cx.notify();
                     }))
                     .children(tab_titles.into_iter().map(|(index, title)| {
@@ -482,8 +518,9 @@ impl Render for AppShell {
                             .ghost()
                             .xsmall()
                             .tooltip("New tab (Ctrl+T)")
-                            .on_click(cx.listener(|this, _, _, cx| {
+                            .on_click(cx.listener(|this, _, window, cx| {
                                 this.add_tab(cx);
+                                this.focus_terminal(window, cx);
                                 cx.notify();
                             })),
                     ),

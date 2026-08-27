@@ -14,9 +14,9 @@ use std::ffi::OsString;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::Context as _;
+use mux::Mux;
 use mux::domain::{Domain, LocalDomain};
 use mux::pane::Pane;
-use mux::Mux;
 use portable_pty::CommandBuilder;
 use wezterm_term::TerminalSize;
 
@@ -106,9 +106,11 @@ fn init_inner() -> anyhow::Result<()> {
     let exec = promise::spawn::SimpleExecutor::new();
     std::thread::Builder::new()
         .name("wezterm-gpui-mux".into())
-        .spawn(move || loop {
-            if exec.tick().is_err() {
-                break;
+        .spawn(move || {
+            loop {
+                if exec.tick().is_err() {
+                    break;
+                }
             }
         })
         .context("mux promise executor thread")?;

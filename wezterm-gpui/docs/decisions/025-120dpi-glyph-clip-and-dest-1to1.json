@@ -1,0 +1,6 @@
+{
+  "id": "025-120dpi-glyph-clip-and-dest-1to1",
+  "at": "2026-08-27T18:55:00Z",
+  "decision": "drop_tight_cell_clip_and_lock_sprite_dest_device_size",
+  "rationale": "User 2026-08-27 after 024: 4K @ 120dpi (scale 1.25) still shredded; 1080p @ 96dpi OK. New shot is vertical slivers inside glyphs (DIR→CIF), not horizontal row gaps. Two causes: (1) 023 clip_x to exact cell_w cut FreeType LCD/bearing pixels at 1.25; 96dpi hid it. Tight per-cell clip reverted (row bitmap still clips to the line). (2) dest size and origin were snapped separately so dest_device ≠ bitmap size at 1.25 (5:4 column skip). Dest origin is rounded in device space then size is image_w/h / scale so snap_bounds width is exactly the bitmap."
+}

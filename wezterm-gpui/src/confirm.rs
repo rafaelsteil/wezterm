@@ -5,10 +5,10 @@ use std::rc::Rc;
 
 use gpui::*;
 use gpui_component::{
+    StyledExt, WindowExt,
     button::{Button, ButtonVariant, ButtonVariants as _},
     dialog::{DialogAction, DialogButtonProps, DialogClose, DialogFooter},
     input::{Input, InputState},
-    StyledExt, WindowExt,
 };
 
 /// Yes/No confirm using gpui-component `AlertDialog`.
@@ -91,13 +91,9 @@ pub fn open_line_prompt(
             .footer(
                 DialogFooter::new()
                     .child(
-                        DialogClose::new()
-                            .child(Button::new("cancel").outline().label("Cancel")),
+                        DialogClose::new().child(Button::new("cancel").outline().label("Cancel")),
                     )
-                    .child(
-                        DialogAction::new()
-                            .child(Button::new("ok").primary().label("OK")),
-                    ),
+                    .child(DialogAction::new().child(Button::new("ok").primary().label("OK"))),
             )
     });
 }

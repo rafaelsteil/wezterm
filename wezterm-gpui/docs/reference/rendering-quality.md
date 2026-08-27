@@ -14,6 +14,14 @@ Decisions: [016](../decisions/016-term-render-quality.json), [017](../decisions/
 
 **021 (2026-08-27):** Selection/copy/paste **user-ok**. Wrapped triple-click first missed continuation (physical row); `get_logical_lines` then **user-ok** (“works”).
 
+**023 (2026-08-27):** Geometry box-draw **user-ok** (`echo` / `tree`).
+
+**024 (2026-08-27):** 4K main monitor shredded each row into horizontal slivers; other screen OK. Dest is now image device px / `scale_factor`. **Not user-ok** — retry showed vertical glyph slivers at 120dpi (025).
+
+**025 (2026-08-27):** 4K @ 120dpi **user-ok** after dropping tight cell clip and locking dest 1:1. 96dpi still OK.
+
+**026 (parked):** Moving the window between monitors hangs **2–3s** (looks like DPI reshape/redraw). Backlog; do not start unless asked.
+
 Fairness note: this POC is a **debug** `wezterm-gpui.exe`. Official wezterm-gui is **release**.
 
 ## Done
@@ -29,13 +37,17 @@ Fairness note: this POC is a **debug** `wezterm-gpui.exe`. Official wezterm-gui 
 | gpui-fps HUD | Wired (019), **off by default**. Ctrl+Shift+F. Come back later. |
 | Lua `font` / `color_scheme` | **User-ok** (020; BGRA + coverage blit) |
 | Mouse selection + copy/paste | **User-ok** (021), including wrapped triple-click |
+| Geometry box-draw U+2500–259F | **User-ok** (023; echo/tree) |
+| Per-cell glyph clip | **Reverted (025)** — 120dpi cut LCD/bearings; row-bitmap clip only |
+| 4K line-sprite dest | **User-ok** with 025 (dest 1:1 + clip off) |
 
 ## Still wrong / next (smallest first)
 
-1. User will report more bugs next session. Until then: visual leftovers vs wezterm-gui (geometry box-draw, per-cell clip).
-2. GPUI `text_system` spike only if paint feels slow again — [gpui-text-vs-sprites.md](gpui-text-vs-sprites.md). Do not go back to per-glyph `paint_image`.
-3. **Come back later: measure with gpui-fps** (Ctrl+Shift+F). Stock HUD is *continuous* (how fast we can paint; window never idles). For typing/`dir` lag, watch **FRAME** with continuous *off* — that toggle is **not wired yet**. Hide HUD to idle.
-4. ConPTY vertical junk: **later**, with wezterm-gui (018).
+1. Wait for the next bug list. Powerline triangles only if nerd-font prompts look wrong.
+2. **Backlog: monitor-move hang (026)** — 2–3s when dragging between 96dpi and 120dpi monitors. Do not start unless asked.
+3. GPUI `text_system` spike only if paint feels slow again — [gpui-text-vs-sprites.md](gpui-text-vs-sprites.md). Do not go back to per-glyph `paint_image`.
+4. **Come back later: measure with gpui-fps** (Ctrl+Shift+F). Stock HUD is *continuous* (how fast we can paint; window never idles). For typing/`dir` lag, watch **FRAME** with continuous *off* — that toggle is **not wired yet**. Hide HUD to idle.
+5. ConPTY vertical junk: **later**, with wezterm-gui (018).
 
 ## Feedback that helps
 

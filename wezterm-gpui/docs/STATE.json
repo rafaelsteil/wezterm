@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-27T15:44:00Z",
+  "updated": "2026-08-27T19:12:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "021 selection **user-ok** (drag/copy/paste + wrapped triple-click after get_logical_lines). User will report more bugs next session. Until then: visual leftovers vs wezterm-gui (box-draw, per-cell clip). FPS HUD off (019). ConPTY junk later (018). Palette parked. Do not start window/ cutover.",
+      "action": "025 4K 120dpi **user-ok**. Wait for the next bug list. Backlog (do not start): monitor-move hang 2–3s (026), Powerline, FPS HUD (019), ConPTY junk (018). Palette parked. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 120dpi user-ok. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok** (BGRA + coverage blit). 021 selection/copy/paste **user-ok** including wrapped triple-click. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -110,7 +110,27 @@
     {
       "id": "mouse-selection-copy-paste",
       "status": "done",
-      "notes": "GUI-side TermPane selection (not mux). Drag / double-click word / triple-click logical line. User-tried 2026-08-27: copy/paste/drag ok; wrapped triple-click was physical-only then **user-ok** after get_logical_lines (“works”)."
+      "notes": "GUI-side TermPane selection (not mux). Drag / double-click word / triple-click logical line. User-tried 2026-08-27: copy/paste/drag ok; wrapped triple-click **user-ok** after get_logical_lines. 022 **user-ok**: click is not a 1-col selection; typing works on launch without a right-click."
+    },
+    {
+      "id": "boxdraw-and-cell-clip",
+      "status": "done",
+      "notes": "023: U+2500–259F CPU geometry. Tight cell clip reverted in 025. echo/tree **user-ok**. Powerline out."
+    },
+    {
+      "id": "hi-dpi-line-sprite-dest",
+      "status": "done",
+      "notes": "024: dest = image device px / scale_factor. Superseded visually by 025; keep as the dest-size finding."
+    },
+    {
+      "id": "hi-dpi-120dpi-clip-and-dest",
+      "status": "done",
+      "notes": "025: drop tight cell clip; dest origin locked in device px. **User-ok** 2026-08-27 on 4K 120dpi (96dpi still OK)."
+    },
+    {
+      "id": "monitor-move-dpi-reshape-hang",
+      "status": "pending",
+      "notes": "026 backlog: 2–3s hang when moving the window between monitors (96↔120 dpi). Do not start unless asked. See docs/plans/026-monitor-move-dpi-reshape-hang.md."
     },
     {
       "id": "delete-old-ui",
@@ -254,6 +274,36 @@
       "decision": "gpui_selection_is_gui_side_like_wezterm_gui",
       "rationale": "User asked for mouse selection + copy/paste. Selection lives on TermPane, not mux. Drag/word/line; Ctrl+Shift+C/V; Pane::send_paste. Lua mouse_bindings stay out.",
       "record": "docs/decisions/021-mouse-selection-copy-paste.json"
+    },
+    {
+      "at": "2026-08-27T16:10:00Z",
+      "decision": "click_is_not_selection_and_left_click_focuses_shell",
+      "rationale": "User: single click painted a one-col box; typing ignored until right-click. Cell range stays None until hit leaves origin (wezterm-gui). TermScreen left-click focuses AppShell (it used to stop_propagation before track_focus). Also focus at window open / first paint / tab.",
+      "record": "docs/decisions/022-click-not-select-and-term-focus.json"
+    },
+    {
+      "at": "2026-08-27T16:40:00Z",
+      "decision": "box_draw_is_cpu_geometry_and_glyphs_clip_to_cell",
+      "rationale": "Visual leftovers vs wezterm-gui while waiting for bugs. U+2500–259F rasterized into the row bitmap (tty7 approach, pixels not GPUI Path). Shaped glyphs clip to the originating cell span. Honor custom_block_glyphs. No wezterm-gui path-dep. Powerline later.",
+      "record": "docs/decisions/023-geometry-boxdraw-and-cell-clip.json"
+    },
+    {
+      "at": "2026-08-27T17:10:00Z",
+      "decision": "line_sprite_dest_is_image_device_px_over_window_scale",
+      "rationale": "4K shredded rows: dest must be bitmap device pixels / window.scale_factor, paint_image(dest, dest). Not 023 X clip.",
+      "record": "docs/decisions/024-hi-dpi-line-sprite-dest.json"
+    },
+    {
+      "at": "2026-08-27T19:05:00Z",
+      "decision": "drop_tight_cell_clip_and_lock_sprite_dest_device_size",
+      "rationale": "User after 024: 4K @ 120dpi still shredded (vertical slivers, DIR→CIF); 1080p @ 96dpi OK. Tight 023 clip cut LCD/bearings at 1.25. Dest origin locked in device px so snap size equals the bitmap.",
+      "record": "docs/decisions/025-120dpi-glyph-clip-and-dest-1to1.json"
+    },
+    {
+      "at": "2026-08-27T19:12:00Z",
+      "decision": "monitor_move_hang_is_backlog",
+      "rationale": "User after 025 user-ok: 2–3s hang when moving the window between monitors (looks like recompute/redraw). Park; do not start a slice.",
+      "record": "docs/decisions/026-monitor-move-dpi-reshape-hang.json"
     }
   ],
   "constraints": [
@@ -327,7 +377,31 @@
       "status": "poc_user_ok",
       "legacy": "wezterm-gui/src/selection.rs + termwindow/mouseevent.rs",
       "gpui": "wezterm-gpui/src/term_pane.rs Selection + glyph_paint.rs sel tint + shell.rs Ctrl+Shift+C/V",
-      "e2e": "user-tried 2026-08-27: drag/copy/paste ok; wrapped triple-click ok after get_logical_lines (“works”)"
+      "e2e": "user-tried 2026-08-27: drag/copy/paste ok; wrapped triple-click ok after get_logical_lines. 022 click/focus **user-ok** (both bugs fixed)."
+    },
+    "boxdraw_and_cell_clip": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui/src/customglyph.rs + screen_line clip strips",
+      "gpui": "wezterm-gpui/src/boxdraw.rs + glyph_paint.rs (row-bitmap clip; tight cell clip reverted 025)",
+      "e2e": "user-tried 2026-08-27: echo/tree box-draw **user-ok**. Powerline out."
+    },
+    "hi_dpi_line_sprite_dest": {
+      "status": "poc_not_user_ok",
+      "legacy": "wezterm-gui GL atlas at window DPI",
+      "gpui": "wezterm-gpui/src/glyph_paint.rs paint_term dest = image_px / scale_factor",
+      "e2e": "user retry 2026-08-27: 4K 120dpi still shredded (vertical slivers) — 025"
+    },
+    "hi_dpi_120dpi_clip_and_dest": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui GL atlas at window DPI",
+      "gpui": "wezterm-gpui/src/glyph_paint.rs blit_glyph row clip + paint_term dest origin_device + image size",
+      "e2e": "user-ok 2026-08-27 on 4K 120dpi (96dpi still OK). Monitor-move hang is 026 backlog."
+    },
+    "monitor_move_dpi_reshape_hang": {
+      "status": "parked_backlog",
+      "legacy": "wezterm-gui GPU atlas; DPI change still reshapes",
+      "gpui": "wezterm-gpui/src/glyph_paint.rs GlyphPainter::sync_font clears glyphs+rows on DPI change",
+      "e2e": "user 2026-08-27: 2–3s hang when dragging window between monitors. Do not start unless asked."
     },
     "scrollback_viewport": {
       "status": "poc_user_ok",
@@ -547,6 +621,56 @@
       "at": "2026-08-27T15:44:00Z",
       "id": "selection_wrapped_triple_click_user_ok",
       "detail": "User retry 2026-08-27 after logical-line fix: “works.” Triple-click on wrapped dir junction line highlights all physical rows. 021 selection/copy/paste is user-ok. User will report more bugs in a new session."
+    },
+    {
+      "at": "2026-08-27T16:10:00Z",
+      "id": "click_painted_one_col_selection",
+      "detail": "User 2026-08-27: single click on the shell painted a one-column selection box. Cause: on_mouse_down Cell sets range=None, but GPUI MouseMove on the press (same cell) set SelRange{start:end:origin}; cols_for_row is inclusive so that is one column. wezterm-gui extend_selection only sets a range when origin.x != x || origin.y != y. Fix: Cell drag keeps range None while hit == origin."
+    },
+    {
+      "at": "2026-08-27T16:10:00Z",
+      "id": "typing_dead_until_right_click",
+      "detail": "User 2026-08-27: after a fresh launch, typing is ignored until a right-click on the shell. Cause: AppShell.track_focus is how keys reach on_term_key; TermScreen left-click stop_propagation ran before that, so a left-click (and the initial unfocused window) never focused AppShell. Right-click was unhandled and bubbled. Fix: window.focus AppShell at open, first paint, pane press (left or right), tab/new-tab; then stop_propagation only for left so selection still captures."
+    },
+    {
+      "at": "2026-08-27T16:12:00Z",
+      "id": "click_and_focus_user_ok",
+      "detail": "User retry 2026-08-27 after 022: “both bugs are fixed.” Single click no longer paints a 1-col selection; typing works on a fresh launch without a right-click. Wait for the next bug list; do not invent a slice."
+    },
+    {
+      "at": "2026-08-27T16:45:00Z",
+      "id": "boxdraw_and_cell_clip_wired",
+      "detail": "023 visual leftovers: U+2500–259F painted as CPU geometry into the 017 line sprite (tty7 boxdraw.rs approach rewritten for pixels; honor custom_block_glyphs). Font glyphs for those codepoints are replaced with spaces before HarfBuzz. blit_glyph clips to [col, col+num_cells) so wide fallback glyphs cannot smear. cargo check --manifest-path wezterm-gpui/Cargo.toml green; cargo test --lib boxdraw 6/6. Powerline triangles and wezterm-gui tiny-skia customglyph.rs not imported. Needs user try vs wezterm-gui dir/tree/box lines."
+    },
+    {
+      "at": "2026-08-27T17:05:00Z",
+      "id": "boxdraw_user_ok_4k_shredded",
+      "detail": "User 2026-08-27: 023 echo/tree box-draw **user-ok**. Separate bug on 4K main monitor only: horizontal slivers of each row (garbage), resize does not redraw correctly; moving the window to another screen draws correctly. Not 023 X-clip (that was horizontal per-cell). Line sprites dest vs window.scale_factor (024)."
+    },
+    {
+      "at": "2026-08-27T17:15:00Z",
+      "id": "hi_dpi_line_sprite_dest_wired",
+      "detail": "024: paint_image(dest, dest) with dest size = RenderImage device pixels / window.scale_factor() so the atlas tile is 1:1. Layout Y uses the same scale. Paint cache keys scale. cargo check green."
+    },
+    {
+      "at": "2026-08-27T18:55:00Z",
+      "id": "4k_120dpi_vertical_glyph_slivers_after_024",
+      "detail": "User 2026-08-27 after 024: still garbage on 4K @ 120dpi (status Cascadia 11pt, 120dpi, 111×30 line sprites). 1080p @ 96dpi OK. Shot is vertical slivers inside glyphs (<DIR> looks like <CIF>), not 024 horizontal row gaps. Cause: 023 tight clip_x to cell_w cut FreeType LCD/bearing pixels at scale 1.25; dest origin/size snapped separately could also skip columns. 025 drops tight clip and locks dest origin in device px."
+    },
+    {
+      "at": "2026-08-27T19:05:00Z",
+      "id": "hi_dpi_120dpi_clip_and_dest_wired",
+      "detail": "025: blit_glyph clips only to the row bitmap (023 box-draw stays). paint_term dest origin = round((pane+s)*scale) then size = image_w/h / scale. cargo check --manifest-path wezterm-gpui/Cargo.toml green."
+    },
+    {
+      "at": "2026-08-27T19:10:00Z",
+      "id": "hi_dpi_120dpi_user_ok",
+      "detail": "User 2026-08-27 after 025: 4K 120dpi draws correctly (96dpi still OK). Tight cell clip off + dest 1:1 is user-ok."
+    },
+    {
+      "at": "2026-08-27T19:12:00Z",
+      "id": "monitor_move_hang_backlog",
+      "detail": "User 2026-08-27: moving the window between monitors hangs 2–3 seconds; looks like recompute/redraw. Parked (026). Suspected: sync_font on 96↔120 dpi drops glyph+row caches then reshape/composite every visible line on the UI thread (debug binary). Do not start unless asked."
     }
   ],
   "blockers": [],
@@ -566,6 +690,11 @@
     "conpty_vertical_junk": "also_in_wezterm_gui_polish_later",
     "gpui_fps_hud": "wired_off_by_default_come_back_later",
     "lua_config": "user_ok_font_scheme_scrollback_bell",
-    "selection_copy_paste": "user_ok"
+    "selection_copy_paste": "user_ok",
+    "click_focus_022": "user_ok",
+    "boxdraw_cell_clip_023": "user_ok_boxdraw_clip_reverted_025",
+    "hi_dpi_line_sprite_dest_024": "superseded_by_025",
+    "hi_dpi_120dpi_clip_and_dest_025": "user_ok",
+    "monitor_move_hang_026": "parked_backlog"
   }
 }

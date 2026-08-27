@@ -1,0 +1,6 @@
+{
+  "id": "023-geometry-boxdraw-and-cell-clip",
+  "at": "2026-08-27T16:40:00Z",
+  "decision": "box_draw_is_cpu_geometry_and_glyphs_clip_to_cell",
+  "rationale": "STATE next while waiting for bugs: visual leftovers vs wezterm-gui (steal-list 4–5). Line sprites still blit the font’s box-drawing glyphs (gaps/aliasing) and clip only to the row, so wide fallback glyphs smear. POC now rasterizes U+2500–259F into the row bitmap (tty7 boxdraw.rs approach, Apache; rewritten for pixels not GPUI Path) and clips each shaped glyph to col..col+num_cells. Honor lua custom_block_glyphs. Powerline triangles and wezterm-gui tiny-skia customglyph.rs stay out (no wezterm-gui path-dep)."
+}

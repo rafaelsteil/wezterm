@@ -1,0 +1,6 @@
+{
+  "id": "024-hi-dpi-line-sprite-dest",
+  "at": "2026-08-27T17:10:00Z",
+  "decision": "line_sprite_dest_is_image_device_px_over_window_scale",
+  "rationale": "User 2026-08-27: 023 box-draw user-ok (echo/tree). 4K main monitor painted shredded horizontal slivers of each row; moving the window to a 1x screen drew correctly; resize on 4K did not. Cause: paint_image(pane_bounds, row_dest) is GPUI object-fit (image mapped to row, clipped to pane) but dest size used dpi/96 logical height that can disagree with window.scale_factor() at 150%/200%, so each row was a thin slice with large gaps. Fix: dest size = RenderImage device pixels / this-frame scale_factor (1:1 in the atlas); paint_image(dest, dest); layout y uses the same scale. Not 023 clip (that was X-only)."
+}

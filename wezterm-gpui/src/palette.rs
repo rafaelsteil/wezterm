@@ -1,9 +1,9 @@
 use gpui::*;
 use gpui_component::{
+    ActiveTheme, StyledExt, WindowExt,
     input::{Input, InputState},
     label::Label,
     notification::Notification,
-    ActiveTheme, StyledExt, WindowExt,
 };
 
 /// Hardcoded WezTerm-like commands for the POC. Not wired to mux/key assignments.

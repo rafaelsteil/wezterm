@@ -28,17 +28,17 @@ Ours: `try_glyph_paint` copies `get_lines` then returns `TermPaint`; `paint_term
 
 gpui-terminal holds `&Term` during the entire `canvas` paint — do not copy that.
 
-### 4. Batched runs + `force_width` + per-run mask
+### 4. Batched runs + `force_width` + per-run mask (clip done for sprites)
 
 tty7 segments rows, `force_width = cell_width`, clips each run. gpui-terminal *documents* batching then paints **one `shape_line` per character** (`layout_row` text_runs discarded).
 
-If we stay on sprites: we already shape a whole line LTR in `glyph_paint.rs`. Add a clip rect **per cell** (we mask the whole pane today) so wide fallback glyphs cannot smear — same intent as tty7’s per-run mask.
+Sprites: tight `[col, col+num_cells)` clip (023) **reverted in 025** — at 120dpi it cut LCD/bearings. Row bitmap still clips the line. Padded overflow-only clip later if smear returns. `force_width` is a GPUI-text concern; not this path.
 
-### 5. Box-drawing / powerline as geometry
+### 5. Box-drawing / powerline as geometry (U+2500–259F done; powerline later)
 
 gpui-terminal `box_drawing.rs` and tty7 `boxdraw.rs` (Apache). Thickness rounded to device pixels; tty7 also covers U+2580 blocks and powerline triangles with an anti-aliased closing-edge quad.
 
-wezterm-gui already has this conceptually. POC still draws those codepoints as font sprites (gaps/aliasing). Copy tty7’s `Ink` enum approach when nerd-font / `dir` box lines look wrong.
+**023:** U+2500–259F is CPU geometry in the line sprite (`src/boxdraw.rs`), not font glyphs. wezterm-gui `customglyph.rs` / tiny-skia not imported. Powerline (U+E0B0…) still font sprites — only if nerd-font prompts look wrong.
 
 ### 6. Input checklist (when vim/less break)
 

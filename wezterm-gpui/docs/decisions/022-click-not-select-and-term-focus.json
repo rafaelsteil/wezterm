@@ -1,0 +1,6 @@
+{
+  "id": "022-click-not-select-and-term-focus",
+  "at": "2026-08-27T16:10:00Z",
+  "decision": "click_is_not_selection_and_left_click_focuses_shell",
+  "rationale": "User 2026-08-27: (1) single click painted a one-column selection; (2) typing ignored until a right-click on the pane. Cell selection now matches wezterm-gui: range is None until the hit cell leaves origin (MouseMove on press used to set start==end, painted as one col). Left-click on TermScreen was stop_propagation before AppShell.track_focus, so keys never reached on_term_key; right-click was unhandled and bubbled. Now: focus AppShell at open + first paint + pane press + tab/new-tab; left-click still stop_propagation after focusing."
+}

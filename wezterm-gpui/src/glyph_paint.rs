@@ -1,19 +1,19 @@
 //! wezterm-font glyphs composited into cached per-line GPUI sprites.
-//! Cell backgrounds live in the same row bitmap. Not a viewport bitmap
-//! (decision 010) and not the wezterm-gui GPU atlas. See decision 017.
+//! Cell backgrounds live in the same row bitmap. Box-draw / block elements
+//! (U+2500–259F) are geometry, not font sprites (023). Tight per-cell glyph
+//! clip was reverted (025: 120dpi cut LCD/bearings). Dest is 1:1 device px (024/025).
+//! Not a viewport bitmap (010) and not the wezterm-gui GPU atlas. See decision 017.
 
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use gpui::{
-    fill, point, px, rgb, size, Bounds, ContentMask, Corners, Pixels, RenderImage, Window,
-};
+use gpui::{Bounds, ContentMask, Corners, Pixels, RenderImage, Window, fill, point, px, rgb, size};
 use image::{Frame, RgbaImage};
 use wezterm_bidi::Direction;
 use wezterm_font::{FontConfiguration, LoadedFont, LoadedFontId, RasterizedGlyph};
-use wezterm_term::color::ColorPalette;
 use wezterm_term::Line;
+use wezterm_term::color::ColorPalette;
 
 const ROW_CACHE_CAP: usize = 256;
 
@@ -49,8 +49,6 @@ struct RowKey {
 
 struct CachedRow {
     image: Arc<RenderImage>,
-    width: f32,
-    height: f32,
 }
 
 pub struct GlyphPainter {
@@ -70,8 +68,6 @@ pub struct CellSize {
 pub struct TermSprite {
     x: f32,
     y: f32,
-    w: f32,
-    h: f32,
     image: Arc<RenderImage>,
 }
 
@@ -147,6 +143,7 @@ impl GlyphPainter {
     }
 
     /// `sel_cols` is per visible row: exclusive column range, or `(u16::MAX, u16::MAX)` if none.
+    /// `scale` is `window.scale_factor()` — dest size must match the bitmap in device pixels.
     pub fn layout(
         &mut self,
         lines: &[Line],
@@ -154,10 +151,11 @@ impl GlyphPainter {
         pal: &ColorPalette,
         cols: usize,
         sel_cols: &[(u16, u16)],
+        scale: f32,
     ) -> anyhow::Result<TermPaint> {
         let font = self.fonts.default_font()?;
         let metrics = font.metrics();
-        let dpr = self.dpr();
+        let dpr = scale.max(0.5) as f64;
         let cell_w = metrics.cell_width.get().max(1.0);
         let cell_h = metrics.cell_height.get().max(1.0);
         let descender = metrics.descender.get();
@@ -168,7 +166,6 @@ impl GlyphPainter {
         let phys_h = cell_h.round().max(1.0);
         let key_cell_w = phys_w as u16;
         let key_cell_h = phys_h as u16;
-        let logical_w = (phys_w / dpr) as f32;
         let logical_h = (phys_h / dpr) as f32;
 
         let mut sprites = Vec::with_capacity(lines.len());
@@ -210,21 +207,12 @@ impl GlyphPainter {
                         phys_w as u32,
                         phys_h as u32,
                     )?;
-                    self.store_row(
-                        key,
-                        CachedRow {
-                            image,
-                            width: logical_w,
-                            height: logical_h,
-                        },
-                    )
+                    self.store_row(key, CachedRow { image })
                 }
             };
             sprites.push(TermSprite {
                 x: 0.0,
-                y: (row as f64 * cell_h / dpr) as f32,
-                w: cached.width,
-                h: cached.height,
+                y: row as f32 * logical_h,
                 image: Arc::clone(&cached.image),
             });
         }
@@ -295,6 +283,8 @@ impl GlyphPainter {
             255,
         );
 
+        let custom_blocks = config::configuration().custom_block_glyphs;
+        let aa_blocks = config::configuration().anti_alias_custom_block_glyphs;
         let sel_start_u = sel_start as usize;
         let sel_end_u = (sel_end as usize).min(cols);
         let has_sel = sel_start != u16::MAX && sel_end_u > sel_start_u;
@@ -302,7 +292,19 @@ impl GlyphPainter {
             let (sr, sg, sb, _) = pal.selection_bg.as_rgba_u8();
             let x = (sel_start_u as f64 * cell_w).round() as i32;
             let w = ((sel_end_u - sel_start_u) as f64 * cell_w).round().max(1.0) as u32;
-            fill_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, sr, sg, sb, 255);
+            fill_rect(
+                &mut pixels,
+                phys_w,
+                phys_h,
+                x,
+                0,
+                w,
+                phys_h,
+                sr,
+                sg,
+                sb,
+                255,
+            );
         }
 
         for cell in line.visible_cells() {
@@ -333,9 +335,63 @@ impl GlyphPainter {
             fill_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, r, g, b, 255);
         }
 
+        if custom_blocks {
+            for cell in line.visible_cells() {
+                let col = cell.cell_index();
+                if col >= cols {
+                    continue;
+                }
+                let Some(ch) = only_char(cell.str()) else {
+                    continue;
+                };
+                if !crate::boxdraw::is_box_draw(ch) {
+                    continue;
+                }
+                let selected = has_sel && col >= sel_start_u && col < sel_end_u;
+                let fg_u = cell_fg(cell.attrs(), pal, selected, cursor_col == Some(col));
+                let (fr, fg_g, fb) = unpack_rgb(fg_u);
+                let x0 = (col as f64 * cell_w).round() as f32;
+                let x1 = ((col + cell.width()) as f64 * cell_w).round() as f32;
+                crate::boxdraw::paint(
+                    &mut pixels,
+                    phys_w,
+                    phys_h,
+                    x0,
+                    0.0,
+                    x1,
+                    phys_h as f32,
+                    ch,
+                    (fr, fg_g, fb),
+                    aa_blocks,
+                );
+            }
+        }
+
         let text = line.as_str();
-        if !text.chars().all(|c| c == ' ' || c == '\0') {
-            match font.blocking_shape(text.as_ref(), None, Direction::LeftToRight, None, None) {
+        let needs_shape = text
+            .chars()
+            .any(|c| c != ' ' && c != '\0' && !(custom_blocks && crate::boxdraw::is_box_draw(c)));
+        if needs_shape {
+            let shape_text: String = if custom_blocks {
+                text.chars()
+                    .map(|c| {
+                        if crate::boxdraw::is_box_draw(c) {
+                            ' '
+                        } else {
+                            c
+                        }
+                    })
+                    .collect()
+            } else {
+                text.to_string()
+            };
+            match font.blocking_shape(
+                shape_text.as_str(),
+                None,
+                Direction::LeftToRight,
+                None,
+                None,
+            ) {
                 Ok(glyphs) => {
                     let mut x_pos = 0.0;
                     for info in glyphs {
@@ -344,31 +400,24 @@ impl GlyphPainter {
                             continue;
                         }
                         let col = (x_pos / cell_w).floor().max(0.0) as usize;
+                        if custom_blocks {
+                            if let Some(ch) = line.get_cell(col).and_then(|c| only_char(c.str())) {
+                                if crate::boxdraw::is_box_draw(ch) {
+                                    x_pos += info.num_cells.max(1) as f64 * cell_w;
+                                    continue;
+                                }
+                            }
+                        }
                         let attrs = line
                             .get_cell(col)
                             .map(|c| c.attrs().clone())
                             .unwrap_or_default();
                         let is_cursor = cursor_col == Some(col);
                         let selected = has_sel && col >= sel_start_u && col < sel_end_u;
-                        let mut fg = pal.resolve_fg(attrs.foreground());
-                        if attrs.reverse() {
-                            fg = pal.resolve_bg(attrs.background());
-                        }
-                        if selected {
-                            let (_, _, _, a) = pal.selection_fg.as_rgba_u8();
-                            if a > 0 {
-                                fg = pal.selection_fg;
-                            }
-                        }
-                        if is_cursor {
-                            fg = pal.cursor_fg;
-                        }
-                        let (fr, fg_g, fb, _) = fg.as_rgba_u8();
-                        let fg_u = pack_rgb(fr, fg_g, fb);
+                        let fg_u = cell_fg(&attrs, pal, selected, is_cursor);
                         if let Ok(glyph) = self.cached_glyph(font, info.glyph_pos, info.font_idx) {
                             let dx = (x_pos + info.x_offset.get() + glyph.bearing_x).round() as i32;
-                            let dy = (cell_h + descender
-                                - (info.y_offset.get() + glyph.bearing_y))
+                            let dy = (cell_h + descender - (info.y_offset.get() + glyph.bearing_y))
                                 .round() as i32;
                             blit_glyph(
                                 &mut pixels,
@@ -431,24 +480,33 @@ impl GlyphPainter {
 
 pub fn paint_term(window: &mut Window, bounds: Bounds<Pixels>, paint: &TermPaint) {
     let scale = window.scale_factor().max(0.5);
-    let snap_px = |v: f32| (v * scale).round() / scale;
     window.with_content_mask(Some(ContentMask { bounds }), |window| {
         window.paint_quad(fill(bounds, rgb(paint.bg)));
         for s in &paint.sprites {
-            if s.w * scale < 1. || s.h * scale < 1. {
+            // Dest must occupy exactly `image` device pixels after GPUI's
+            // scale snap. Snapping origin and size separately at 1.25 (120dpi)
+            // made dest_device ≠ bitmap size → skip of columns (vertical slivers).
+            // Lock: origin_device + image size.
+            let img = s.image.size(0);
+            let img_w = img.width.0 as f32;
+            let img_h = img.height.0 as f32;
+            if img_w < 1. || img_h < 1. {
                 continue;
             }
-            let x0 = snap_px(s.x);
-            let y0 = snap_px(s.y);
-            let x1 = snap_px(s.x + s.w);
-            let y1 = snap_px(s.y + s.h);
-            let image_bounds = Bounds {
-                origin: bounds.origin + point(px(x0), px(y0)),
-                size: size(px((x1 - x0).max(0.)), px((y1 - y0).max(0.))),
+            let ox = f32::from(bounds.origin.x) + s.x;
+            let oy = f32::from(bounds.origin.y) + s.y;
+            let x0 = (ox * scale).round();
+            let y0 = (oy * scale).round();
+            let dest = Bounds {
+                origin: point(px(x0 / scale), px(y0 / scale)),
+                size: size(px(img_w / scale), px(img_h / scale)),
             };
+            if f32::from(dest.size.width) * scale < 1. || f32::from(dest.size.height) * scale < 1. {
+                continue;
+            }
             if let Err(err) = window.paint_image(
-                bounds,
-                image_bounds,
+                dest,
+                dest,
                 Corners::default(),
                 Arc::clone(&s.image),
                 0,
@@ -480,6 +538,39 @@ fn line_is_blank(line: &Line, pal: &ColorPalette, pane_bg: u32) -> bool {
         }
     }
     true
+}
+
+fn only_char(s: &str) -> Option<char> {
+    let mut chars = s.chars();
+    let c = chars.next()?;
+    if chars.next().is_some() {
+        None
+    } else {
+        Some(c)
+    }
+}
+
+fn cell_fg(
+    attrs: &wezterm_term::CellAttributes,
+    pal: &ColorPalette,
+    selected: bool,
+    is_cursor: bool,
+) -> u32 {
+    let mut fg = pal.resolve_fg(attrs.foreground());
+    if attrs.reverse() {
+        fg = pal.resolve_bg(attrs.background());
+    }
+    if selected {
+        let (_, _, _, a) = pal.selection_fg.as_rgba_u8();
+        if a > 0 {
+            fg = pal.selection_fg;
+        }
+    }
+    if is_cursor {
+        fg = pal.cursor_fg;
+    }
+    let (r, g, b, _) = fg.as_rgba_u8();
+    pack_rgb(r, g, b)
 }
 
 fn pack_rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -607,7 +698,9 @@ fn glyph_coverage(raster: &RasterizedGlyph) -> Vec<u8> {
 }
 
 fn lerp_u8(bg: u8, fg: u8, t: f32) -> u8 {
-    (bg as f32 * (1.0 - t) + fg as f32 * t).round().clamp(0.0, 255.0) as u8
+    (bg as f32 * (1.0 - t) + fg as f32 * t)
+        .round()
+        .clamp(0.0, 255.0) as u8
 }
 
 /// Inverse of wezterm-font `linear_u8_to_srgb8` (coverage stored as sRGB).

@@ -51,7 +51,9 @@ fn main() {
             cx.spawn(async move |cx| {
                 cx.open_window(opts, |window, cx| {
                     let view = cx.new(|cx| AppShell::new(window, cx));
-                    cx.new(|cx| Root::new(view, window, cx).bg(cx.theme().background))
+                    let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
+                    view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
+                    root
                 })
                 .expect("Failed to open window");
             })
