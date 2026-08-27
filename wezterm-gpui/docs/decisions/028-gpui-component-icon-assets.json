@@ -1,0 +1,6 @@
+{
+  "id": "028-gpui-component-icon-assets",
+  "at": "2026-08-27T19:50:00Z",
+  "decision": "register_gpui_component_assets_for_icons",
+  "rationale": "User: Plus button blank; Windows min/max/close missing. gpui-component IconName is paths only; SVGs live in gpui-component-assets. TitleBar window controls use IconName::WindowMinimize/Maximize/Close. Native caption is hidden (appears_transparent). Same git/rev as gpui-component; with_assets(Assets) at application().run."
+}

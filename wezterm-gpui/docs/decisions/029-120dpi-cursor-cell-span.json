@@ -1,0 +1,6 @@
+{
+  "id": "029-120dpi-cursor-cell-span",
+  "at": "2026-08-27T20:05:00Z",
+  "decision": "cell_fills_use_abutting_edge_span",
+  "rationale": "User: 4K 120dpi block cursor has a 1px gap after the previous glyph; 96dpi and wezterm-gui do not. Cursor bg was round(col*cell_w)+round(cell_w); at 1.25 that can skip a pixel before the next cell. Width is now round((col+n)*cell_w)-round(col*cell_w). Same snap lesson as 025. Do not ceil cell_w (would change dest size)."
+}

@@ -20,9 +20,15 @@ use wezterm_term::input::{
 use wezterm_term::{Alert, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
 
 use crate::glyph_paint::{GlyphPainter, TermPaint};
+use crate::shells::ShellProfile;
 
 const DEFAULT_ROWS: usize = 24;
 const DEFAULT_COLS: usize = 80;
+
+/// Shell process ended (`exit`, CloseOnCleanExit, mux `PaneRemoved`).
+pub enum TermPaneEvent {
+    Exited,
+}
 
 struct LiveMux {
     pane: Arc<dyn Pane>,
@@ -55,6 +61,8 @@ pub struct TermPane {
     /// AppShell's focus handle. TermScreen swallows left-click, so we
     /// focus the shell here or typing stays dead until a right-click bubbles.
     shell_focus: FocusHandle,
+    /// Tab title when the PTY has not set one yet (profile label).
+    fallback_title: String,
 }
 
 struct PaintCache {
@@ -71,8 +79,14 @@ struct PaintCache {
 }
 
 impl TermPane {
-    pub fn spawn(font_px: f32, shell_focus: FocusHandle, cx: &mut Context<Self>) -> Self {
+    pub fn spawn(
+        font_px: f32,
+        shell_focus: FocusHandle,
+        profile: &ShellProfile,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let _ = crate::mux_host::ensure_init();
+        let fallback_title = profile.label.clone();
         let painter = match GlyphPainter::new(96) {
             Ok(p) => Some(p),
             Err(err) => {
@@ -80,7 +94,7 @@ impl TermPane {
                 None
             }
         };
-        match spawn_live(cx) {
+        match spawn_live(profile.command(), cx) {
             Ok(live) => Self {
                 live: Ok(live),
                 font_px,
@@ -94,6 +108,7 @@ impl TermPane {
                 paint_scale: 1.0,
                 selection: Selection::default(),
                 shell_focus,
+                fallback_title,
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
@@ -108,6 +123,7 @@ impl TermPane {
                 paint_scale: 1.0,
                 selection: Selection::default(),
                 shell_focus,
+                fallback_title,
             },
         }
     }
@@ -151,7 +167,7 @@ impl TermPane {
             Ok(live) => {
                 let title = live.pane.get_title();
                 if title.is_empty() || title.eq_ignore_ascii_case("wezterm") {
-                    "cmd.exe".into()
+                    self.fallback_title.clone()
                 } else {
                     title
                 }
@@ -164,6 +180,11 @@ impl TermPane {
         let Ok(live) = self.live.as_mut() else {
             return false;
         };
+        // Default exit_behavior is Close. After `exit`, ConPTY write_all can
+        // block the GPUI thread so chrome still clicks but typing is dead (032).
+        if live.pane.is_dead() {
+            return false;
+        }
         let Some((key, mods)) = map_keystroke(&event.keystroke) else {
             return false;
         };
@@ -730,6 +751,8 @@ impl TermPane {
     }
 }
 
+impl EventEmitter<TermPaneEvent> for TermPane {}
+
 impl Drop for TermPane {
     fn drop(&mut self) {
         if let Ok(live) = &self.live {
@@ -922,7 +945,10 @@ fn line_around(pane: &dyn Pane, pos: CellPos) -> SelRange {
     }
 }
 
-fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LiveMux> {
+fn spawn_live(
+    cmd: portable_pty::CommandBuilder,
+    cx: &mut Context<TermPane>,
+) -> anyhow::Result<LiveMux> {
     let size = TerminalSize {
         rows: DEFAULT_ROWS,
         cols: DEFAULT_COLS,
@@ -930,7 +956,7 @@ fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LiveMux> {
         pixel_height: DEFAULT_ROWS * 16,
         dpi: 96,
     };
-    let pane = crate::mux_host::spawn_cmd_exe(size)?;
+    let pane = crate::mux_host::spawn_command(size, cmd)?;
     let pane_id = pane.pane_id();
     let alive = Arc::new(AtomicBool::new(true));
     let (tx, rx) = async_channel::unbounded::<()>();
@@ -950,7 +976,9 @@ fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LiveMux> {
                 }
             }
             if notification_is_pane(&n, pane_id) {
-                let _ = tx.send_blocking(());
+                // try_send: mux::notify holds subscribers.write(); blocking
+                // send from that lock can stall the mux executor (032).
+                let _ = tx.try_send(());
             }
             true
         });
@@ -959,7 +987,15 @@ fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LiveMux> {
     cx.spawn(async move |this, cx| {
         while let Ok(()) = rx.recv().await {
             while rx.try_recv().is_ok() {}
-            if this.update(cx, |_, cx| cx.notify()).is_err() {
+            if this
+                .update(cx, |term, cx| {
+                    if term.live.as_ref().is_ok_and(|live| live.pane.is_dead()) {
+                        cx.emit(TermPaneEvent::Exited);
+                    }
+                    cx.notify();
+                })
+                .is_err()
+            {
                 break;
             }
         }

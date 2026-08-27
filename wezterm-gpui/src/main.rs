@@ -33,31 +33,35 @@ fn hello_window_options() -> WindowOptions {
 fn main() {
     let hello = std::env::args().any(|a| a == "--hello");
 
-    gpui_platform::application().run(move |cx| {
-        gpui_component::init(cx);
-        bind_keys(cx);
+    gpui_platform::application()
+        .with_assets(gpui_component_assets::Assets)
+        .run(move |cx| {
+            gpui_component::init(cx);
+            bind_keys(cx);
 
-        if hello {
-            cx.spawn(async move |cx| {
-                cx.open_window(hello_window_options(), |window, cx| {
-                    let view = cx.new(|_| HelloWorld);
-                    cx.new(|cx| Root::new(view, window, cx).bg(cx.theme().background))
+            if hello {
+                cx.spawn(async move |cx| {
+                    cx.open_window(hello_window_options(), |window, cx| {
+                        let view = cx.new(|_| HelloWorld);
+                        cx.new(|cx| Root::new(view, window, cx).bg(cx.theme().background))
+                    })
+                    .expect("Failed to open window");
                 })
-                .expect("Failed to open window");
-            })
-            .detach();
-        } else {
-            let opts = window_options(cx);
-            cx.spawn(async move |cx| {
-                cx.open_window(opts, |window, cx| {
-                    let view = cx.new(|cx| AppShell::new(window, cx));
-                    let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
-                    view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
-                    root
+                .detach();
+            } else {
+                let opts = window_options(cx);
+                cx.spawn(async move |cx| {
+                    cx.open_window(opts, |window, cx| {
+                        let view = cx.new(|cx| AppShell::new(window, cx));
+                        let root = cx.new(|cx| {
+                            Root::new(view.clone(), window, cx).bg(cx.theme().background)
+                        });
+                        view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
+                        root
+                    })
+                    .expect("Failed to open window");
                 })
-                .expect("Failed to open window");
-            })
-            .detach();
-        }
-    });
+                .detach();
+            }
+        });
 }

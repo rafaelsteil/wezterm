@@ -14,6 +14,7 @@ mod hello;
 mod mux_host;
 mod palette;
 pub mod shell;
+mod shells;
 mod term_pane;
 
 pub use hello::HelloWorld;

@@ -1,0 +1,6 @@
+{
+  "id": "027-new-tab-shell-menu",
+  "at": "2026-08-27T19:30:00Z",
+  "decision": "plus_is_default_cmd_chevron_lists_powershell",
+  "rationale": "User asked for more terminals, PowerShell first, with Windows Terminal Plus+chevron UI. Plus / Ctrl+T stay Command Prompt (%ComSpec%). Chevron is gpui-component DropdownButton listing cmd + Windows PowerShell + pwsh if installed. Still mux LocalDomain spawn, not a second PTY host. Lua default_prog / launch_menu / WT Settings-About footer stay out. WSL and VS prompts later."
+}

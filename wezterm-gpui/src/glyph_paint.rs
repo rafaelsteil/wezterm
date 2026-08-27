@@ -2,6 +2,9 @@
 //! Cell backgrounds live in the same row bitmap. Box-draw / block elements
 //! (U+2500–259F) are geometry, not font sprites (023). Tight per-cell glyph
 //! clip was reverted (025: 120dpi cut LCD/bearings). Dest is 1:1 device px (024/025).
+//! Cell fills use abutting `cell_span` (029). Glyphs sit on wezterm-gui's
+//! integer cell grid (`ceil` + `num_cells * cell_w`, not HarfBuzz `x_advance`)
+//! so the cursor left edge matches the last glyph at 120dpi (030).
 //! Not a viewport bitmap (010) and not the wezterm-gui GPU atlas. See decision 017.
 
 use std::collections::{HashMap, VecDeque};
@@ -135,10 +138,11 @@ impl GlyphPainter {
 
     pub fn cell_size(&self) -> anyhow::Result<CellSize> {
         let m = self.fonts.default_font_metrics()?;
+        let (cell_w, cell_h) = device_cell_size(m.cell_width.get(), m.cell_height.get());
         let dpr = self.dpr() as f32;
         Ok(CellSize {
-            width: m.cell_width.get().max(1.0) as f32 / dpr,
-            height: m.cell_height.get().max(1.0) as f32 / dpr,
+            width: cell_w as f32 / dpr,
+            height: cell_h as f32 / dpr,
         })
     }
 
@@ -156,14 +160,14 @@ impl GlyphPainter {
         let font = self.fonts.default_font()?;
         let metrics = font.metrics();
         let dpr = scale.max(0.5) as f64;
-        let cell_w = metrics.cell_width.get().max(1.0);
-        let cell_h = metrics.cell_height.get().max(1.0);
+        let (cell_w, cell_h) =
+            device_cell_size(metrics.cell_width.get(), metrics.cell_height.get());
         let descender = metrics.descender.get();
         let (br, bg, bb, _) = pal.background.as_rgba_u8();
         let pane_bg = pack_rgb(br, bg, bb);
         let cols = cols.max(1).min(400);
-        let phys_w = (cols as f64 * cell_w).round().max(1.0);
-        let phys_h = cell_h.round().max(1.0);
+        let phys_w = (cols as f64 * cell_w).max(1.0);
+        let phys_h = cell_h.max(1.0);
         let key_cell_w = phys_w as u16;
         let key_cell_h = phys_h as u16;
         let logical_h = (phys_h / dpr) as f32;
@@ -290,8 +294,7 @@ impl GlyphPainter {
         let has_sel = sel_start != u16::MAX && sel_end_u > sel_start_u;
         if has_sel {
             let (sr, sg, sb, _) = pal.selection_bg.as_rgba_u8();
-            let x = (sel_start_u as f64 * cell_w).round() as i32;
-            let w = ((sel_end_u - sel_start_u) as f64 * cell_w).round().max(1.0) as u32;
+            let (x, w) = cell_span(sel_start_u, sel_end_u - sel_start_u, cell_w);
             fill_rect(
                 &mut pixels,
                 phys_w,
@@ -330,8 +333,7 @@ impl GlyphPainter {
             if color == pane_bg && !is_cursor && !selected {
                 continue;
             }
-            let x = (col as f64 * cell_w).round() as i32;
-            let w = (cell.width() as f64 * cell_w).round().max(1.0) as u32;
+            let (x, w) = cell_span(col, cell.width(), cell_w);
             fill_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, r, g, b, 255);
         }
 
@@ -350,8 +352,9 @@ impl GlyphPainter {
                 let selected = has_sel && col >= sel_start_u && col < sel_end_u;
                 let fg_u = cell_fg(cell.attrs(), pal, selected, cursor_col == Some(col));
                 let (fr, fg_g, fb) = unpack_rgb(fg_u);
-                let x0 = (col as f64 * cell_w).round() as f32;
-                let x1 = ((col + cell.width()) as f64 * cell_w).round() as f32;
+                let (x0, w) = cell_span(col, cell.width(), cell_w);
+                let x0 = x0 as f32;
+                let x1 = x0 + w as f32;
                 crate::boxdraw::paint(
                     &mut pixels,
                     phys_w,
@@ -393,17 +396,22 @@ impl GlyphPainter {
                 None,
             ) {
                 Ok(glyphs) => {
+                    // wezterm-gui default (`use_pixel_positioning: false`):
+                    // advance `num_cells * cell_width`, not HarfBuzz `x_advance`.
+                    // Accumulated `x_advance` drifts left of the integer cursor
+                    // at 120dpi (029 `cell_span` only changed fill width).
                     let mut x_pos = 0.0;
                     for info in glyphs {
+                        let advance = glyph_cell_advance(info.num_cells, cell_w);
                         if info.is_space || info.glyph_pos == 0 {
-                            x_pos += info.x_advance.get();
+                            x_pos += advance;
                             continue;
                         }
                         let col = (x_pos / cell_w).floor().max(0.0) as usize;
                         if custom_blocks {
                             if let Some(ch) = line.get_cell(col).and_then(|c| only_char(c.str())) {
                                 if crate::boxdraw::is_box_draw(ch) {
-                                    x_pos += info.num_cells.max(1) as f64 * cell_w;
+                                    x_pos += advance;
                                     continue;
                                 }
                             }
@@ -432,7 +440,7 @@ impl GlyphPainter {
                                 fg_u,
                             );
                         }
-                        x_pos += info.x_advance.get();
+                        x_pos += advance;
                     }
                 }
                 Err(err) => eprintln!("wezterm-gpui shape: {err:#}"),
@@ -585,6 +593,42 @@ fn unpack_rgb(color: u32) -> (u8, u8, u8) {
     )
 }
 
+/// Device-pixel cell size like wezterm-gui `RenderMetrics`: ceil after lua
+/// `cell_width` / `line_height`. Fractional metrics + `x_advance` left a 1px
+/// sliver before the block cursor at 120dpi (030).
+fn device_cell_size(metric_w: f64, metric_h: f64) -> (f64, f64) {
+    let cfg = config::configuration();
+    (
+        ceil_device_cell(metric_w, cfg.cell_width),
+        ceil_device_cell(metric_h, cfg.line_height),
+    )
+}
+
+fn ceil_device_cell(metric: f64, scale: f64) -> f64 {
+    (metric * scale).max(1.0).ceil()
+}
+
+/// Default wezterm-gui glyph step: `num_cells * cell_width`, not `x_advance`.
+fn glyph_cell_advance(num_cells: u8, cell_w: f64) -> f64 {
+    num_cells.max(1) as f64 * cell_w
+}
+
+/// Device-pixel X of the left edge of `col`. With integer `cell_w` this is
+/// `col * cell_w`. `round` kept so 029 `cell_span` still abuts if metrics are
+/// ever fractional again.
+fn cell_edge(col: usize, cell_w: f64) -> i32 {
+    (col as f64 * cell_w).round() as i32
+}
+
+/// Fill span for `ncells` starting at `col`. Width is `edge(col+n) - edge(col)` so
+/// consecutive cells abut. Independent `round(col*w)` + `round(w)` at 1.25 (120dpi)
+/// left a 1px gap before the cursor (029).
+fn cell_span(col: usize, ncells: usize, cell_w: f64) -> (i32, u32) {
+    let x0 = cell_edge(col, cell_w);
+    let x1 = cell_edge(col + ncells, cell_w);
+    (x0, (x1 - x0).max(1) as u32)
+}
+
 fn fill_rect(
     pixels: &mut [u8],
     img_w: u32,
@@ -710,5 +754,59 @@ fn srgb8_to_linear(c: u8) -> f32 {
         x / 12.92
     } else {
         ((x + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+#[cfg(test)]
+mod cell_span_tests {
+    use super::*;
+
+    #[test]
+    fn consecutive_cells_abut_at_fractional_width() {
+        // 120dpi-ish: round(col*w)+round(w) can skip a pixel (col 6, w=10.4).
+        let cell_w = 10.4;
+        let mut x = 0i32;
+        for col in 0..20 {
+            let (x0, w) = cell_span(col, 1, cell_w);
+            assert_eq!(x0, x, "gap before col {col}");
+            x = x0 + w as i32;
+        }
+        assert_eq!(x, cell_edge(20, cell_w));
+    }
+
+    #[test]
+    fn independent_round_would_gap() {
+        let cell_w = 10.4;
+        let col = 6;
+        let old_x = (col as f64 * cell_w).round() as i32;
+        let old_w = (cell_w).round().max(1.0) as u32;
+        let next = ((col + 1) as f64 * cell_w).round() as i32;
+        assert!(
+            old_x + old_w as i32 != next,
+            "fixture: expected independent round to gap"
+        );
+        let (x0, w) = cell_span(col, 1, cell_w);
+        assert_eq!(x0 + w as i32, cell_span(col + 1, 1, cell_w).0);
+    }
+
+    #[test]
+    fn ceil_device_cell_matches_wezterm_gui() {
+        assert_eq!(ceil_device_cell(10.4, 1.0), 11.0);
+        assert_eq!(ceil_device_cell(8.0, 1.0), 8.0);
+        assert_eq!(ceil_device_cell(10.4, 1.1), 12.0);
+    }
+
+    #[test]
+    fn force_width_stays_on_cursor_grid() {
+        let cell_w = 11.0;
+        let mut x = 0.0;
+        for _ in 0..23 {
+            x += glyph_cell_advance(1, cell_w);
+        }
+        assert_eq!(x, 23.0 * cell_w);
+        assert_eq!(cell_edge(23, cell_w), 23 * 11);
+        // HarfBuzz-style 10.4 advance would sit ~14px left of the cursor.
+        let drifted = 23.0 * 10.4;
+        assert!((23.0 * cell_w - drifted).round() >= 1.0);
     }
 }

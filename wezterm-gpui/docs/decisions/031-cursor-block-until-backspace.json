@@ -1,0 +1,6 @@
+{
+  "id": "031-cursor-block-until-backspace",
+  "at": "2026-08-27T20:35:00Z",
+  "decision": "cursor_block_visibility_is_backlog",
+  "rationale": "User 2026-08-27 after 030 user-ok: block cursor missing on launch/new tab; typing does not show it; backspace does; space hides it; type after backspace shows then hides. Park; do not start a slice. Likely: cursor fill only walks visible_cells(), so a cursor past the last stored cell never paints. wezterm-gui uses a cursor quad at cursor.x."
+}

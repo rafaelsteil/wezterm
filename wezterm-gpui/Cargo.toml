@@ -21,6 +21,10 @@ async-channel = "2.3"
 gpui = { git = "https://github.com/zed-industries/zed", features = ["profiler"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
+# Same git/rev as gpui-component. IconName paths (`icons/plus.svg`, window
+# min/max/close, …) are not embedded in gpui-component; without this +
+# `with_assets`, every Icon is an empty box (028).
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
 # Same git/rev as gpui-component. Enables `gpui/profiler` for FrameTimingCollector.
 # Do not pin a different rev — that duplicates gpui.
 gpui-fps = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }

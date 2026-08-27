@@ -58,8 +58,15 @@ Dual-stack is expected. POC shortcuts are allowed. Palette / charselect are **pa
 | 4K line-sprite dest (024) | **Not user-ok.** Horizontal slivers first; retry at 120dpi was vertical glyph slivers (`<DIR>` → `<CIF>`). 1080p 96dpi OK. |
 | 120dpi clip + dest 1:1 (025) | **User-ok** 2026-08-27 on 4K 120dpi (96dpi still OK). Tight cell clip off; dest 1:1. |
 | Monitor-move hang (026) | **Backlog.** 2–3s hang when dragging between monitors. Do not start unless asked. |
+| New-tab shell menu (027) | **User-ok** 2026-08-27 (“works well”). Plus / Ctrl+T Command Prompt; chevron lists cmd + Windows PowerShell + `pwsh` if installed. |
+| GPUI icon assets (028) | **User-ok** 2026-08-27 (“works well”). `gpui-component-assets` + `with_assets`. Plus / tab close / title-bar min/max/close. |
+| 120dpi cursor gap (029) | **Not user-ok.** `cell_span` only changed fill width; gap persisted. |
+| Integer cell grid (030) | **User-ok** 2026-08-27 (“works great now”). Ceil cell size + glyphs step `num_cells * cell_w`. |
+| Cursor missing until backspace (031) | **Backlog.** Block cursor hidden on launch/new tab; typing no; backspace yes; space hides. Do not start unless asked. |
+| Tab close / `exit` kills typing (032) | **Better now.** Close tab on pane death; restore AppShell focus. |
+| Last tab `exit` quits (033) | **User-ok** 2026-08-27 (“works great”). Last-tab process exit calls `cx.quit()`. |
 
-`go_nogo`: in-process embed = **no**. Continue POC = **yes**. Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. Paint = **line sprites user-ok (017)**; **025 4K 120dpi user-ok**. FPS HUD = **wired, off by default (019)**. Lua config = **user-ok (020; Cascadia + Dracula)**. Selection/copy/paste = **user-ok (021, including wrap)**. 022 click/focus = **user-ok**. 023 box-draw = **user-ok** (tight clip reverted). 026 monitor-move hang = **backlog**. Glyph atlas Element = **not started**. Scrollback = **user-ok**. Palette = **parked**. ConPTY junk = **shared with wezterm-gui, polish later**.
+`go_nogo`: in-process embed = **no**. Continue POC = **yes**. Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. Paint = **line sprites user-ok (017)**; **025 4K 120dpi user-ok**. FPS HUD = **wired, off by default (019)**. Lua config = **user-ok (020; Cascadia + Dracula)**. Selection/copy/paste = **user-ok (021, including wrap)**. 022 click/focus = **user-ok**. 023 box-draw = **user-ok** (tight clip reverted). 026 monitor-move hang = **backlog**. **027 shell menu = user-ok.** **028 icons = user-ok.** **029 cursor gap = not user-ok.** **030 integer cell grid = user-ok.** **031 cursor until backspace = backlog.** **032 tab close/exit keys = better now.** **033 last-tab `exit` quits = user-ok.** Glyph atlas Element = **not started**. Scrollback = **user-ok**. Palette = **parked**. ConPTY junk = **shared with wezterm-gui, polish later**.
 
 Pins:
 
@@ -71,26 +78,28 @@ Pins:
 
 ## Next steps (pick with the user unless they already said)
 
-Default `wezterm gpui` hosts **cmd.exe** through mux. Paint is **one cached GPUI image per line** (wezterm-font composite, 017) at window DPI — **user-ok** (“much better”). Live drag rewraps display only; ~450ms later one ConPTY `resize`. Loads **`~/.wezterm.lua`** for font/size/scheme/scrollback/bell (020) — **user-ok** (“works like a charm”). Mouse **selection + copy/paste** (021) **user-ok** including wrapped triple-click. **023 user-ok:** box-draw (`echo` / `tree`); tight cell clip **reverted (025)**. **025 user-ok:** 4K 120dpi glyphs. **026 backlog:** 2–3s hang when moving the window between monitors — **do not start** unless asked. **Main goal still rendering** vs wezterm-gui (looks, not chrome).
+Default `wezterm gpui` hosts **cmd.exe** through mux (Plus / Ctrl+T). Chevron next to Plus lists Command Prompt, Windows PowerShell, and `pwsh` if installed (027) — **user-ok**. Icons need `gpui-component-assets` (028) — **user-ok**. Paint is **one cached GPUI image per line** (wezterm-font composite, 017) at window DPI — **user-ok** (“much better”). Live drag rewraps display only; ~450ms later one ConPTY `resize`. Loads **`~/.wezterm.lua`** for font/size/scheme/scrollback/bell (020) — **user-ok** (“works like a charm”). Mouse **selection + copy/paste** (021) **user-ok** including wrapped triple-click. **023 user-ok:** box-draw (`echo` / `tree`); tight cell clip **reverted (025)**. **025 user-ok:** 4K 120dpi glyphs. **029 not user-ok** (`cell_span`). **030 user-ok:** integer cell grid (“works great now”). **026 backlog:** 2–3s hang when moving the window between monitors. **031 backlog:** block cursor missing until backspace (launch/new tab; space hides). **032:** tab X / `exit` left typing dead — **better now**. **033 user-ok:** last-tab `exit` quits the app (“works great”). **Do not start** 026/031 unless asked. **Main goal still rendering** vs wezterm-gui (looks, not chrome).
 
 Do **not** start a `window/` cutover unless the user explicitly asks.
 Do **not** start character selector / palette keyboard — user parked those.
 Do **not** investigate ConPTY vertical junk in this POC — also happens in official wezterm-gui (018).
 Do **not** investigate the monitor-move hang (026) unless asked.
+Do **not** investigate the missing cursor until backspace (031) unless asked.
 Do **not** start a GPUI `text_system` rewrite unless paint feels slow again.
-Do **not** expand lua to tab-bar / decorations / mouse bindings / live reload unless asked.
+Do **not** expand lua to tab-bar / decorations / mouse bindings / live reload / `default_prog` / `launch_menu` unless asked.
 
-Workstream: `docs/reference/rendering-quality.md`. Lua: `docs/plans/020-lua-config-first-slice.md`. Selection: `docs/plans/021-mouse-selection-copy-paste.md`. Box-draw: `docs/plans/023-boxdraw-and-cell-clip.md`. 4K dest: `docs/plans/024-hi-dpi-line-sprite-dest.md`. 120dpi clip/dest: `docs/plans/025-120dpi-glyph-clip-and-dest-1to1.md`. Monitor-move hang (parked): `docs/plans/026-monitor-move-dpi-reshape-hang.md`.
+Workstream: `docs/reference/rendering-quality.md`. Lua: `docs/plans/020-lua-config-first-slice.md`. Selection: `docs/plans/021-mouse-selection-copy-paste.md`. Box-draw: `docs/plans/023-boxdraw-and-cell-clip.md`. 4K dest: `docs/plans/024-hi-dpi-line-sprite-dest.md`. 120dpi clip/dest: `docs/plans/025-120dpi-glyph-clip-and-dest-1to1.md`. Monitor-move hang (parked): `docs/plans/026-monitor-move-dpi-reshape-hang.md`. New-tab menu: `docs/plans/027-new-tab-shell-menu.md`. Icons: `docs/plans/028-gpui-component-icon-assets.md`. Cursor gap (insufficient): `docs/plans/029-120dpi-cursor-cell-span.md`. Integer cell grid: `docs/plans/030-integer-cell-grid.md`. Cursor until backspace (parked): `docs/plans/031-cursor-block-until-backspace.md`. Tab close/exit keys: `docs/plans/032-tab-close-exit-keys.md`. Last tab `exit` quits: `docs/plans/033-last-tab-exit-quits.md`.
 
 Reasonable continuations, smallest first:
 
 1. Wait for the next bug list. Powerline triangles only if nerd-font prompts look wrong.
 2. Come back later: FPS HUD (Ctrl+Shift+F). Continuous = sustain rate; for typing lag we still want a non-continuous FRAME mode (not wired).
 3. Come back later: monitor-move hang (026) — 2–3s when dragging between 96dpi and 120dpi monitors.
-4. GPUI `text_system` spike only if they ask for more speed (`docs/reference/gpui-text-vs-sprites.md`).
-5. **Only if asked:** windowing cutover.
+4. Come back later: cursor missing until backspace (031) — launch/new tab; space hides it.
+5. GPUI `text_system` spike only if they ask for more speed (`docs/reference/gpui-text-vs-sprites.md`).
+6. **Only if asked:** windowing cutover.
 
-If the user just says “continue”: wait for the next bugs; do not invent a new slice; do **not** start 026. Do not start (5). Do not paste Zed `terminal_element.rs` (GPL-3). Do not resume palette/charselect.
+If the user just says “continue”: wait for the next bugs; do not invent a new slice; do **not** start 026 or 031. Do not start (6). Do not paste Zed `terminal_element.rs` (GPL-3). Do not resume palette/charselect.
 
 ---
 
@@ -104,7 +113,7 @@ WezTerm has **three** UI layers:
 | Box model chrome | `wezterm-gui/src/termwindow/box_model.rs` + fancy tab bar, window buttons, `Modal`s | Natural gpui-component target |
 | Box-model modals | `palette.rs`, `charselect.rs`, `paneselect.rs` | First incremental replacements (sibling windows today) |
 | Termwiz overlays | `wezterm-gui/src/overlay/` (launcher, copy, debug, confirm, …) | Dialog/Input (confirm+prompt POC done; rest later) |
-| Terminal cells | glyph cache, glium + optional wgpu 25 | Custom GPUI `Element` later. **POC now:** mux `LocalPane` (cmd.exe) + wezterm-font sprites in `glyph_paint.rs` |
+| Terminal cells | glyph cache, glium + optional wgpu 25 | Custom GPUI `Element` later. **POC now:** mux `LocalPane` (cmd / PowerShell) + wezterm-font sprites in `glyph_paint.rs` |
 
 `use_box_model_render` is an experimental pane paint path. Ignore it as a migration vehicle.
 
@@ -123,12 +132,13 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
   src/main.rs                    # --hello vs default app shell; sets window title
   src/lib.rs
   src/hello.rs                   # Button smoke view
-  src/shell.rs                   # TitleBar + tabs + mux TermPane + palette + gpui-fps HUD
+  src/shell.rs                   # TitleBar + tabs + Plus/chevron shell menu + mux TermPane + palette + gpui-fps HUD
   src/palette.rs                 # Input + filtered hardcoded commands (overlay card)
   src/confirm.rs                 # AlertDialog confirm + Dialog+Input line prompt
-  src/mux_host.rs                # config + Mux + LocalDomain; load lua; spawn cmd.exe
+  src/mux_host.rs                # config + Mux + LocalDomain; load lua; spawn CommandBuilder
+  src/shells.rs                  # cmd / Windows PowerShell / optional pwsh profiles (027)
   src/term_pane.rs               # mux LocalPane; wezterm-font paint or Consolas fallback; GUI selection (021)
-  src/glyph_paint.rs             # wezterm-font → cached per-line RenderImages (017); selection tint; 025 dest 1:1 (tight cell clip off)
+  src/glyph_paint.rs             # wezterm-font → cached per-line RenderImages (017); selection tint; 025 dest 1:1; 029 cell_span; 030 integer grid
   src/boxdraw.rs                 # U+2500–259F CPU geometry into the row bitmap (023)
   docs/
     HANDOFF.md                   # this file
@@ -140,6 +150,14 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
     plans/023-boxdraw-and-cell-clip.md
     plans/024-hi-dpi-line-sprite-dest.md
     plans/025-120dpi-glyph-clip-and-dest-1to1.md
+    plans/026-monitor-move-dpi-reshape-hang.md
+    plans/027-new-tab-shell-menu.md
+    plans/028-gpui-component-icon-assets.md
+    plans/029-120dpi-cursor-cell-span.md
+    plans/030-integer-cell-grid.md
+    plans/031-cursor-block-until-backspace.md
+    plans/032-tab-close-exit-keys.md
+    plans/033-last-tab-exit-quits.md
     adr/0001-use-zed-official-gpui.md
     adr/0002-isolated-cargo-workspace.md
     adr/0003-gpui-owns-freetype.md
@@ -202,7 +220,7 @@ Binary lookup for `wezterm gpui`: env `WEZTERM_GPUI`, then next to `wezterm.exe`
 10. **Do not call `LocalPane::resize` (ConPTY) on live GPUI drag.** A few pixels of width is one column; `ResizePseudoConsole` smears the cursor column. wezterm-gui mostly avoids this via Win32 cell-sized resize increments. POC: first valid pane size still resizes the PTY; later **drag** is `Pane::resize_display` (decision 013). After the view grid is unchanged ~450ms, **one** committed ConPTY `resize` (decision 016) so new output can wrap at the new width. Skip sub-2-cell bounds (decision 012). Status shows `pty` vs `view` vs `dpi`.
 11. **External GPUI terminals** — `D:\dev\gpui-terminal` and `D:\dev\tty7`. Notes: `docs/reference/` (including open-questions, GPUI-text vs sprites, scrollback). Do not path-dep, do not switch to `alacritty_terminal`. Zed `terminal_element.rs` is GPL-3: ideas only.
 12. **Adding a gpui-component git crate re-resolves unpinned Zed.** `gpui-fps` at the same `rev` as `gpui-component` is fine, but `cargo check` walked Zed to a newer SHA. Pin back with `cargo update -p gpui --precise fecc3273ed32643c2ea1b04a74c8780e2c9ffaf8` (the `STATE.json` `pins.gpui_rev`). Do not put `rev` on the `gpui` dep (pitfall 2).
-13. **Lua config (020).** `common_init` used to skip `wezterm.lua` so `default_prog` could not replace cmd.exe. Now the file loads; spawn still forces `%ComSpec%`. On Windows, `wezterm.lua` next to the exe still wins over `~/.wezterm.lua`. Unknown lua fields reject the whole file (same as wezterm-gui) → defaults. Live reload / `wezterm.on` / chrome keys are not this slice.
+13. **Lua config (020).** `common_init` used to skip `wezterm.lua` so `default_prog` could not replace cmd.exe. Now the file loads; Plus / Ctrl+T still spawn Command Prompt. Chevron can spawn PowerShell (027). On Windows, `wezterm.lua` next to the exe still wins over `~/.wezterm.lua`. Unknown lua fields reject the whole file (same as wezterm-gui) → defaults. Live reload / `wezterm.on` / chrome keys / `launch_menu` are not this slice.
 14. **GPUI `RenderImage` is BGRA.** Line sprites must swap R/B before `Frame::new`. RGBA upload made Dracula `#282a36` look brown (`#362a28`). `gpui::rgb(0xRRGGBB)` for quads is already correct.
 15. **Do not premultiply glyph coverage then multiply alpha again.** That is `fg * alpha²` and Cascadia looks thin vs wezterm-gui. Cache FreeType coverage; blit `sRGB_fg * linear_a + bg * (1-a)` like the glyph shader.
 16. **TermScreen left-click `stop_propagation` vs AppShell `track_focus`.** Swallowing the press before the shell focuses means typing stays dead until a right-click (unhandled, bubbles). Focus AppShell from the pane press (and at window open). Cell selection: a MouseMove on the press with start==end paints a 1-col box; keep range None until the hit cell leaves origin (wezterm-gui).
@@ -210,6 +228,13 @@ Binary lookup for `wezterm gpui`: env `WEZTERM_GPUI`, then next to `wezterm.exe`
 18. **4K line sprites (024).** `paint_image(pane, row_dest)` is object-fit. Dest must be `image_device_px / window.scale_factor()` and passed as both args, or high-DPI rows paint as horizontal slivers. Other (1x) screens can look fine.
 19. **120dpi vertical glyph slivers (025).** Tight 023 clip to `cell_w` cut FreeType LCD/bearings at scale 1.25 (`<DIR>` → `<CIF>`); 96dpi hid it. Clip is row-bitmap only. Also lock dest origin in device px so `snap_bounds` width equals the bitmap (independent origin/size snaps skip columns at 1.25).
 20. **Monitor-move hang (026, backlog).** 2–3s when dragging between 96dpi and 120dpi. `sync_font` drops glyph+row caches on DPI change, then every visible line is reshaped on the UI thread. Do not start unless asked.
+21. **New-tab menu is gpui-component `DropdownButton`, not a custom overlay.** Plus is `shells[0]` (Command Prompt). Chevron `PopupMenu` items call `spawn_profile`. Do not honor lua `launch_menu` / `default_prog` unless asked. WT Settings/About footer and Ctrl+Shift+1…9 shortcuts are out.
+22. **gpui-component does not embed icon SVGs.** `IconName` is a path (`icons/plus.svg`). Without `gpui-component-assets` + `application().with_assets(Assets)`, Plus, tab close, dropdown caret, and TitleBar min/max/close are empty. Native Windows caption is off (`appears_transparent`). Same git `rev` as gpui-component.
+23. **120dpi cursor 1px gap (029, not sufficient).** Cell bg/cursor used `round(col*cell_w)+round(cell_w)`. At 1.25 those snaps can skip a pixel. `cell_span` abuts fills but does **not** move the cursor’s left edge. User: problem persists.
+24. **Integer cell grid (030).** wezterm-gui `RenderMetrics` ceils cell size; glyphs step `num_cells * cell_width`, not HarfBuzz `x_advance`. Fractional metrics + accumulated advance sit left of `round(col*cell_w)`. Dest 1:1 (025) still holds after ceil (bitmap size changes; dest = image px / scale). Do not skip ceil to “protect” dest size.
+25. **Cursor missing until backspace (031, backlog).** Block cursor hidden on launch/new tab; typing does not show it; backspace does; space hides. Cursor fill walks `visible_cells()`; VT cursor often sits past the last stored cell. wezterm-gui paints a cursor quad at `cursor.x`. Do not start unless asked.
+26. **Tab close / `exit` kills typing (032).** After tab X, dialog restores a destroyed Close-button focus handle so AppShell never sees keys (Plus still clicks). After `exit`, the ShellTab kept a mux-removed pane; `key_down` wrote ConPTY. Close the tab on `TermPaneEvent::Exited`. `request_terminal_focus` after close/new tab. Mux subscriber `try_send`. User: better now.
+27. **Last tab `exit` quits (033).** First 032 spawned a replacement shell. wezterm-gui Close + `quit_when_all_windows_are_closed` exits the process. `dismiss_exited_tab` now `cx.quit()` when it was the last tab. Last-tab X still confirm-quit.
 
 ---
 
@@ -232,6 +257,13 @@ Docs index:
 - `docs/plans/024-hi-dpi-line-sprite-dest.md` — 4K line-sprite dest / scale_factor
 - `docs/plans/025-120dpi-glyph-clip-and-dest-1to1.md` — drop tight clip + dest 1:1 at 120dpi (**user-ok**)
 - `docs/plans/026-monitor-move-dpi-reshape-hang.md` — parked: 2–3s hang moving between monitors
+- `docs/plans/027-new-tab-shell-menu.md` — Plus = cmd; chevron lists PowerShell (**user-ok**)
+- `docs/plans/028-gpui-component-icon-assets.md` — `with_assets` so Plus / window controls paint (**user-ok**)
+- `docs/plans/029-120dpi-cursor-cell-span.md` — abutting cell fills (**not user-ok**; gap persisted)
+- `docs/plans/030-integer-cell-grid.md` — ceil cell size + `num_cells * cell_w` glyphs (**user-ok**)
+- `docs/plans/031-cursor-block-until-backspace.md` — parked: block cursor missing until backspace
+- `docs/plans/032-tab-close-exit-keys.md` — tab X / `exit` left typing dead (**better now**)
+- `docs/plans/033-last-tab-exit-quits.md` — last-tab `exit` quits like wezterm (**user-ok**)
 - `docs/adr/` — accepted decisions (0003 = GPUI-owned FreeType)
-- `docs/decisions/` — 016 paint quality; 017 line sprites; 018 ConPTY junk later; 019 gpui-fps HUD; 020 lua config first slice; 021 mouse selection + copy/paste; 022 click ≠ selection + term focus; 023 box-draw + cell clip; 024 4K line-sprite dest; 025 120dpi clip+dest; 026 monitor-move hang backlog
+- `docs/decisions/` — 016 paint quality; 017 line sprites; 018 ConPTY junk later; 019 gpui-fps HUD; 020 lua config first slice; 021 mouse selection + copy/paste; 022 click ≠ selection + term focus; 023 box-draw + cell clip; 024 4K line-sprite dest; 025 120dpi clip+dest; 026 monitor-move hang backlog; 027 new-tab shell menu; 028 icon assets; 029 cursor cell span; 030 integer cell grid; 031 cursor until backspace backlog; 032 tab close/exit keys; 033 last-tab `exit` quits
 - `docs/reference/` — rendering-quality (current), gpui-terminal / tty7, steal-list, open-questions, scrollback

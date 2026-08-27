@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-27T19:12:00Z",
+  "updated": "2026-08-27T20:55:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "025 4K 120dpi **user-ok**. Wait for the next bug list. Backlog (do not start): monitor-move hang 2–3s (026), Powerline, FPS HUD (019), ConPTY junk (018). Palette parked. Do not start window/ cutover.",
+      "action": "033 last-tab `exit` quits **user-ok** (“works great”). Wait for the next bug list. Backlog (do not start): cursor missing until backspace (031), monitor-move hang 2–3s (026), Powerline, FPS HUD (019), ConPTY junk (018). Palette parked. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -131,6 +131,41 @@
       "id": "monitor-move-dpi-reshape-hang",
       "status": "pending",
       "notes": "026 backlog: 2–3s hang when moving the window between monitors (96↔120 dpi). Do not start unless asked. See docs/plans/026-monitor-move-dpi-reshape-hang.md."
+    },
+    {
+      "id": "new-tab-shell-menu",
+      "status": "done",
+      "notes": "027: Plus/Ctrl+T still Command Prompt. Chevron DropdownButton lists cmd + Windows PowerShell + pwsh if installed. **User-ok** 2026-08-27 (“works well”) after 028 icons."
+    },
+    {
+      "id": "gpui-component-icon-assets",
+      "status": "done",
+      "notes": "028: gpui-component-assets + with_assets. Blank Plus and missing min/max/close were IconName with no AssetSource. **User-ok** 2026-08-27 (“works well”)."
+    },
+    {
+      "id": "hi-dpi-cursor-cell-span",
+      "status": "done",
+      "notes": "029: cell fills use abutting cell_span. **Not user-ok** 2026-08-27 — gap persisted (left edge unchanged; glyphs still used x_advance). Kept as fill helper. Real fix is 030."
+    },
+    {
+      "id": "hi-dpi-integer-cell-grid",
+      "status": "done",
+      "notes": "030: ceil cell size like wezterm-gui RenderMetrics; glyphs advance num_cells*cell_w not x_advance. **User-ok** 2026-08-27 (“works great now”)."
+    },
+    {
+      "id": "cursor-block-until-backspace",
+      "status": "pending",
+      "notes": "031 backlog: block cursor missing on launch/new tab; typing does not show it; backspace does; space hides. Do not start unless asked. See docs/plans/031-cursor-block-until-backspace.md."
+    },
+    {
+      "id": "tab-close-exit-keys",
+      "status": "done",
+      "notes": "032: tab X or `exit` left typing dead (chrome still clicks). Close tab on pane death; skip key_down when is_dead; restore AppShell focus. **User: better now.** Last-tab spawn replaced by 033 quit."
+    },
+    {
+      "id": "last-tab-exit-quits",
+      "status": "done",
+      "notes": "033: last-tab `exit` quits the app like wezterm-gui (not a replacement shell). Last-tab X still confirm-quit. **User-ok** 2026-08-27 (“works great”)."
     },
     {
       "id": "delete-old-ui",
@@ -304,6 +339,48 @@
       "decision": "monitor_move_hang_is_backlog",
       "rationale": "User after 025 user-ok: 2–3s hang when moving the window between monitors (looks like recompute/redraw). Park; do not start a slice.",
       "record": "docs/decisions/026-monitor-move-dpi-reshape-hang.json"
+    },
+    {
+      "at": "2026-08-27T19:30:00Z",
+      "decision": "plus_is_default_cmd_chevron_lists_powershell",
+      "rationale": "User asked for more terminals, PowerShell first, with Windows Terminal Plus+chevron UI. Plus / Ctrl+T stay Command Prompt. Chevron is DropdownButton listing cmd + Windows PowerShell + pwsh if installed. Lua default_prog / launch_menu stay out.",
+      "record": "docs/decisions/027-new-tab-shell-menu.json"
+    },
+    {
+      "at": "2026-08-27T19:50:00Z",
+      "decision": "register_gpui_component_assets_for_icons",
+      "rationale": "User: Plus blank; Windows min/max/close missing. gpui-component does not embed SVGs. TitleBar controls are IconName. Native caption off (appears_transparent). Same rev as gpui-component; with_assets(Assets).",
+      "record": "docs/decisions/028-gpui-component-icon-assets.json"
+    },
+    {
+      "at": "2026-08-27T20:05:00Z",
+      "decision": "cell_fills_use_abutting_edge_span",
+      "rationale": "User: 4K 120dpi block cursor has a 1px gap after the previous glyph; 96dpi and wezterm-gui do not. Cursor bg was round(col*cell_w)+round(cell_w); at 1.25 that can skip a pixel. Width is now round((col+n)*cell_w)-round(col*cell_w). Same snap lesson as 025.",
+      "record": "docs/decisions/029-120dpi-cursor-cell-span.json"
+    },
+    {
+      "at": "2026-08-27T20:25:00Z",
+      "decision": "glyphs_on_ceiled_cell_grid_not_x_advance",
+      "rationale": "User after 029: gap persisted. cell_span did not move the cursor left edge; glyphs accumulated x_advance. Match wezterm-gui: ceil cell size, advance num_cells*cell_w. Dest 1:1 (025) still applies.",
+      "record": "docs/decisions/030-integer-cell-grid.json"
+    },
+    {
+      "at": "2026-08-27T20:35:00Z",
+      "decision": "cursor_block_visibility_is_backlog",
+      "rationale": "User after 030 user-ok: block cursor missing on launch/new tab; typing does not show it; backspace does; space hides. Park; do not start. Likely cursor fill only walks visible_cells().",
+      "record": "docs/decisions/031-cursor-block-until-backspace.json"
+    },
+    {
+      "at": "2026-08-27T20:45:00Z",
+      "decision": "close_tab_on_exit_and_restore_appshell_focus",
+      "rationale": "User: tab X or shell exit leaves Plus working but typing dead, including on a new tab. Dead pane still received keys; dialog restore focused a destroyed Close button. Close tab on Exited; skip is_dead key_down; request_terminal_focus after close/new tab.",
+      "record": "docs/decisions/032-tab-close-exit-keys.json"
+    },
+    {
+      "at": "2026-08-27T20:50:00Z",
+      "decision": "last_tab_process_exit_quits_app",
+      "rationale": "User after 032: better now; last-tab `exit` should fully close like wezterm-gui, not spawn a replacement. Last-tab X still confirm_quit.",
+      "record": "docs/decisions/033-last-tab-exit-quits.json"
     }
   ],
   "constraints": [
@@ -402,6 +479,48 @@
       "legacy": "wezterm-gui GPU atlas; DPI change still reshapes",
       "gpui": "wezterm-gpui/src/glyph_paint.rs GlyphPainter::sync_font clears glyphs+rows on DPI change",
       "e2e": "user 2026-08-27: 2–3s hang when dragging window between monitors. Do not start unless asked."
+    },
+    "new_tab_shell_menu": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui overlay launcher + launch_menu / SpawnCommandInNewTab",
+      "gpui": "wezterm-gpui/src/shells.rs + shell.rs DropdownButton suffix + mux_host::spawn_command",
+      "e2e": "user-ok 2026-08-27 (“works well”) after 028 icons. Plus=cmd; chevron lists PowerShell."
+    },
+    "gpui_component_icon_assets": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui draws caption + tab icons itself",
+      "gpui": "gpui_component_assets::Assets + application().with_assets in main.rs",
+      "e2e": "user-ok 2026-08-27 (“works well”). Plus, tab close, title-bar min/max/close visible."
+    },
+    "hi_dpi_cursor_cell_span": {
+      "status": "poc_not_user_ok",
+      "legacy": "wezterm-gui integer cell_size (ceil) + full-cell cursor sprite",
+      "gpui": "wezterm-gpui/src/glyph_paint.rs cell_span for cursor/selection/bg fills",
+      "e2e": "User 2026-08-27: problem persists. 029 only changed fill width. Kept; 030 is the grid/advance fix."
+    },
+    "hi_dpi_integer_cell_grid": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui RenderMetrics ceil + screen_line num_cells*cell_width (use_pixel_positioning false)",
+      "gpui": "wezterm-gpui/src/glyph_paint.rs device_cell_size + glyph_cell_advance",
+      "e2e": "user-ok 2026-08-27 (“works great now”). 4K 120dpi cursor abuts last glyph."
+    },
+    "cursor_block_until_backspace": {
+      "status": "parked_backlog",
+      "legacy": "wezterm-gui cursor quad at cursor.x * cell_width (not gated on line cells)",
+      "gpui": "wezterm-gpui/src/glyph_paint.rs composite_row fills cursor_bg only when visible_cells() has that col",
+      "e2e": "user 2026-08-27: missing on launch/new tab; typing no; backspace yes; space hides. Do not start unless asked."
+    },
+    "tab_close_exit_keys": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui closes pane on exit_behavior Close; window focus stays on term",
+      "gpui": "wezterm-gpui/src/term_pane.rs TermPaneEvent::Exited + is_dead skip; shell.rs request_terminal_focus",
+      "e2e": "user 2026-08-27: “it's better now.” Typing after tab X / `exit` on remaining tabs works. Last-tab spawn was wrong → 033."
+    },
+    "last_tab_exit_quits": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui Close + quit_when_all_windows_are_closed (default true)",
+      "gpui": "wezterm-gpui/src/shell.rs dismiss_exited_tab → cx.quit() when last tab",
+      "e2e": "user-ok 2026-08-27 (“works great”). Last-tab `exit` closes the app."
     },
     "scrollback_viewport": {
       "status": "poc_user_ok",
@@ -671,6 +790,66 @@
       "at": "2026-08-27T19:12:00Z",
       "id": "monitor_move_hang_backlog",
       "detail": "User 2026-08-27: moving the window between monitors hangs 2–3 seconds; looks like recompute/redraw. Parked (026). Suspected: sync_font on 96↔120 dpi drops glyph+row caches then reshape/composite every visible line on the UI thread (debug binary). Do not start unless asked."
+    },
+    {
+      "at": "2026-08-27T19:30:00Z",
+      "id": "new_tab_shell_menu_wired",
+      "detail": "027: TabBar suffix is gpui-component DropdownButton (Plus + chevron). Plus/Ctrl+T spawn Command Prompt (%ComSpec%). Menu lists Command Prompt, Windows PowerShell (System32 path or powershell.exe), and pwsh if Program Files/PATH has it. mux_host::spawn_command takes CommandBuilder. Lua default_prog/launch_menu still unused. cargo check --manifest-path wezterm-gpui/Cargo.toml green; cargo test --lib shells 2/2. Not user-tried."
+    },
+    {
+      "at": "2026-08-27T19:48:00Z",
+      "id": "icons_missing_no_asset_source",
+      "detail": "User 2026-08-27 after 027: Plus is a blank grey square (tooltip still works); title-bar min/max/close missing (top-right empty). Cause: TitleBar::title_bar_options appears_transparent so Win32 does not draw caption buttons; GPUI TitleBar ControlIcon uses IconName SVGs; gpui-component does not embed those files. Same for Plus/Close/dropdown caret. Fix: gpui-component-assets + with_assets (028)."
+    },
+    {
+      "at": "2026-08-27T19:56:00Z",
+      "id": "icons_and_shell_menu_user_ok",
+      "detail": "User 2026-08-27 after 028: “works well.” Plus / tab close / title-bar min/max/close visible; 027 chevron shell menu (cmd + PowerShell) user-ok. Wait for the next bug list."
+    },
+    {
+      "at": "2026-08-27T20:05:00Z",
+      "id": "120dpi_cursor_1px_gap",
+      "detail": "User 2026-08-27: 4K 120dpi block cursor has a dark 1px sliver after the previous glyph (`C:\\Users\\rafael>aaaaaaa█`). 96dpi GPUI and wezterm-gui have no gap. Cause: cursor/cell bg used round(col*cell_w)+round(cell_w); at 1.25 those snaps skip a pixel (e.g. col 6, w=10.4: 62+10 vs next 73). 029: cell_span width = round((col+n)*w)-round(col*w). cargo test --lib cell_span 2/2. Needs user-try."
+    },
+    {
+      "at": "2026-08-27T20:15:00Z",
+      "id": "029_cell_span_did_not_close_cursor_gap",
+      "detail": "User after 029: problem persists. cell_span only changed fill width; cursor left edge stayed round(col*cell_w). Glyphs still accumulated HarfBuzz x_advance (often < cell_w), so after the prompt they sit left of the cursor. Last letter is pane-bg (skipped fill), so the skip is a dark sliver. wezterm-gui ceils cell size and steps num_cells*cell_width."
+    },
+    {
+      "at": "2026-08-27T20:25:00Z",
+      "id": "030_integer_cell_grid_wired",
+      "detail": "030: device_cell_size ceil like RenderMetrics (honors lua cell_width/line_height); glyph loop advances num_cells*cell_w including spaces. cell_size() uses the same integers so mouse/PTY match paint. Dest 1:1 (025) unchanged. cargo test --lib cell_span. Needs user-try on 4K 120dpi."
+    },
+    {
+      "at": "2026-08-27T20:30:00Z",
+      "id": "030_integer_cell_grid_user_ok",
+      "detail": "User 2026-08-27 after 030: “works great now.” 4K 120dpi block cursor abuts the last glyph. Wait for the next bug list. Do not start 026."
+    },
+    {
+      "at": "2026-08-27T20:35:00Z",
+      "id": "cursor_block_until_backspace_backlog",
+      "detail": "User 2026-08-27 after 030: new tab / launch has no block cursor; typing does not show it; backspace does; space hides; backspace then type shows then hides (repeats). Parked (031). Likely: cursor fill walks visible_cells() only, so cursor past last stored cell never paints. wezterm-gui uses a cursor quad at cursor.x. Do not start unless asked."
+    },
+    {
+      "at": "2026-08-27T20:45:00Z",
+      "id": "tab_close_exit_kills_typing",
+      "detail": "User 2026-08-27: tab X or `exit` leaves Plus/dropdown working but typing dead, including in a new tab. Not a freeze. X: confirm dialog restores a destroyed Close-button focus handle; AppShell on_term_key never runs. exit: ShellTab kept a mux-removed pane; key_down wrote ConPTY (can block). 032: Exited closes tab (spawn if last); skip is_dead key_down; request_terminal_focus; mux try_send. Needs user-try."
+    },
+    {
+      "at": "2026-08-27T20:50:00Z",
+      "id": "032_tab_close_exit_better_now",
+      "detail": "User 2026-08-27 after 032: “it's better now.” Typing after tab X / remaining-tab `exit` works. Asked last-tab `exit` to fully close like wezterm (first 032 spawned a replacement)."
+    },
+    {
+      "at": "2026-08-27T20:50:00Z",
+      "id": "033_last_tab_exit_quits_wired",
+      "detail": "033: dismiss_exited_tab calls cx.quit() when it was the last tab (wezterm-gui Close + quit_when_all_windows_are_closed). Last-tab X still confirm_quit. Needs user-try."
+    },
+    {
+      "at": "2026-08-27T20:55:00Z",
+      "id": "033_last_tab_exit_quits_user_ok",
+      "detail": "User 2026-08-27 after 033: “works great.” Last-tab `exit` closes the app like wezterm-gui. Wait for the next bug list. Do not start 026/031."
     }
   ],
   "blockers": [],
@@ -695,6 +874,13 @@
     "boxdraw_cell_clip_023": "user_ok_boxdraw_clip_reverted_025",
     "hi_dpi_line_sprite_dest_024": "superseded_by_025",
     "hi_dpi_120dpi_clip_and_dest_025": "user_ok",
-    "monitor_move_hang_026": "parked_backlog"
+    "monitor_move_hang_026": "parked_backlog",
+    "new_tab_shell_menu_027": "user_ok",
+    "gpui_component_icon_assets_028": "user_ok",
+    "hi_dpi_cursor_cell_span_029": "not_user_ok_gap_persisted",
+    "hi_dpi_integer_cell_grid_030": "user_ok",
+    "cursor_block_until_backspace_031": "parked_backlog",
+    "tab_close_exit_keys_032": "user_better_now",
+    "last_tab_exit_quits_033": "user_ok"
   }
 }

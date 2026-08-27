@@ -8671,6 +8671,7 @@ dependencies = [
  "freetype-sys",
  "gpui",
  "gpui-component",
+ "gpui-component-assets",
  "gpui-fps",
  "gpui_platform",
  "image",

@@ -1,0 +1,6 @@
+{
+  "id": "032-tab-close-exit-keys",
+  "at": "2026-08-27T20:45:00Z",
+  "decision": "close_tab_on_exit_and_restore_appshell_focus",
+  "rationale": "User: tab X or shell exit leaves Plus/dropdown working but typing dead, including on a new tab. Not a freeze. exit left a dead pane (ConPTY write on Close); X left AppShell unfocused after dialog restore of a destroyed Close button. Close the tab on TermPaneEvent::Exited (spawn replacement if last). Skip key_down when is_dead. request_terminal_focus after close/new tab. Mux subscriber try_send. Do not start 026/031."
+}

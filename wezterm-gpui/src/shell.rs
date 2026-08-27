@@ -1,4 +1,4 @@
-//! Sibling-window app chrome. Shells are mux `LocalPane` (cmd.exe); paint prefers wezterm-font.
+//! Sibling-window app chrome. Shells are mux `LocalPane`; paint prefers wezterm-font.
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
@@ -6,13 +6,15 @@ use gpui_component::{
     ActiveTheme, IconName, Sizable, TitleBar, WindowExt,
     button::*,
     label::Label,
+    menu::PopupMenuItem,
     notification::Notification,
     tab::{Tab, TabBar},
 };
 
 use crate::confirm::{open_confirm, open_line_prompt};
 use crate::palette::{CommandPalette, PaletteEvent};
-use crate::term_pane::TermPane;
+use crate::shells::ShellProfile;
+use crate::term_pane::{TermPane, TermPaneEvent};
 
 actions!(
     wezterm_gpui_shell,
@@ -79,6 +81,8 @@ pub struct AppShell {
     /// Root wraps us after `new`; focus once on first paint so keys work
     /// without a right-click.
     focus_pending: bool,
+    /// Plus / Ctrl+T uses `shells[0]`; the chevron lists all of them.
+    shells: Vec<ShellProfile>,
 }
 
 impl Focusable for AppShell {
@@ -110,18 +114,25 @@ impl AppShell {
 
         let font_px = crate::mux_host::config_font_size();
         let focus_handle = cx.focus_handle();
+        let shells = crate::shells::available_shells();
         window.focus(&focus_handle, cx);
         window.activate_window();
-        Self {
+        let default = shells.first().cloned().unwrap_or_else(crate::shells::default_shell);
+        let first = Self::new_tab(font_px, focus_handle.clone(), &default, cx);
+        let first_term = first.term.clone();
+        let mut this = Self {
             focus_handle: focus_handle.clone(),
-            tabs: vec![Self::new_tab(font_px, focus_handle, cx)],
+            tabs: vec![first],
             active: 0,
             font_px,
             palette,
             palette_open: false,
             show_fps: false,
             focus_pending: true,
-        }
+            shells,
+        };
+        this.watch_pane(first_term, cx);
+        this
     }
 
     pub fn focus_terminal(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -129,11 +140,33 @@ impl AppShell {
         window.activate_window();
     }
 
+    /// AppShell keys only work while this handle is focused. Tab X / dialog
+    /// restore a destroyed button handle; Plus can steal focus after we set it.
+    /// `focus_pending` on the next paint (no dialog) plus a delayed retry beats
+    /// gpui-component's 250ms dialog restore (032).
+    fn request_terminal_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_pending = true;
+        if !self.palette_open && !window.has_active_dialog(cx) {
+            self.focus_terminal(window, cx);
+        }
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(300))
+                .await;
+            this.update(cx, |this, cx| {
+                this.focus_pending = true;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     fn apply_command(&mut self, brief: &str, window: &mut Window, cx: &mut Context<Self>) {
         match brief {
             "New Tab" => {
                 self.add_tab(cx);
-                self.focus_terminal(window, cx);
+                self.request_terminal_focus(window, cx);
             }
             "Close current tab" | "Close current pane" => self.confirm_close_active(window, cx),
             "Quit WezTerm" => self.confirm_quit(window, cx),
@@ -163,8 +196,20 @@ impl AppShell {
         }
     }
 
-    fn new_tab(font_px: f32, shell_focus: FocusHandle, cx: &mut Context<Self>) -> ShellTab {
-        let term = cx.new(|cx| TermPane::spawn(font_px, shell_focus, cx));
+    fn default_profile(&self) -> ShellProfile {
+        self.shells
+            .first()
+            .cloned()
+            .unwrap_or_else(crate::shells::default_shell)
+    }
+
+    fn new_tab(
+        font_px: f32,
+        shell_focus: FocusHandle,
+        profile: &ShellProfile,
+        cx: &mut Context<Self>,
+    ) -> ShellTab {
+        let term = cx.new(|cx| TermPane::spawn(font_px, shell_focus, profile, cx));
         ShellTab {
             title_override: None,
             term,
@@ -172,9 +217,61 @@ impl AppShell {
     }
 
     fn add_tab(&mut self, cx: &mut Context<Self>) {
-        self.tabs
-            .push(Self::new_tab(self.font_px, self.focus_handle.clone(), cx));
+        let profile = self.default_profile();
+        self.add_tab_profile(&profile, cx);
+    }
+
+    fn add_tab_profile(&mut self, profile: &ShellProfile, cx: &mut Context<Self>) {
+        let tab = Self::new_tab(
+            self.font_px,
+            self.focus_handle.clone(),
+            profile,
+            cx,
+        );
+        let term = tab.term.clone();
+        self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
+        self.watch_pane(term, cx);
+    }
+
+    fn watch_pane(&mut self, term: Entity<TermPane>, cx: &mut Context<Self>) {
+        cx.subscribe(&term, |this, pane, event, cx| {
+            match event {
+                TermPaneEvent::Exited => {
+                    if let Some(index) = this.tabs.iter().position(|t| t.term == pane) {
+                        this.dismiss_exited_tab(index, cx);
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Process already gone (`exit`). No confirm. Last tab → quit the app,
+    /// same as wezterm-gui `exit_behavior = Close` + `quit_when_all_windows_are_closed`.
+    fn dismiss_exited_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index >= self.tabs.len() {
+            return;
+        }
+        let last = self.tabs.len() <= 1;
+        self.tabs.remove(index);
+        if last || self.tabs.is_empty() {
+            cx.quit();
+            return;
+        }
+        if self.active >= self.tabs.len() {
+            self.active = self.tabs.len() - 1;
+        } else if self.active > index {
+            self.active -= 1;
+        }
+        self.focus_pending = true;
+        cx.notify();
+    }
+
+    fn spawn_profile(&mut self, profile: &ShellProfile, window: &mut Window, cx: &mut Context<Self>) {
+        self.add_tab_profile(profile, cx);
+        self.request_terminal_focus(window, cx);
+        cx.notify();
     }
 
     fn bump_font(&mut self, delta: f32, cx: &mut Context<Self>) {
@@ -224,9 +321,10 @@ impl AppShell {
             format!("🛑 Really kill tab `{title}` and all contained panes?"),
             "Close",
             true,
-            move |_, cx| {
+            move |window, cx| {
                 shell.update(cx, |this, cx| {
                     this.close_tab_at(index);
+                    this.request_terminal_focus(window, cx);
                     cx.notify();
                 });
             },
@@ -343,7 +441,7 @@ impl AppShell {
 
     fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
         self.add_tab(cx);
-        self.focus_terminal(window, cx);
+        self.request_terminal_focus(window, cx);
         cx.notify();
     }
 
@@ -487,7 +585,7 @@ impl Render for AppShell {
                                 .text_size(px(13.)),
                         )
                         .child(
-                            Label::new("POC chrome — mux LocalPane cmd.exe + wezterm-font paint")
+                            Label::new("POC chrome — mux LocalPane + wezterm-font paint")
                                 .text_size(px(12.))
                                 .text_color(cx.theme().muted_foreground),
                         ),
@@ -498,7 +596,7 @@ impl Render for AppShell {
                     .selected_index(active)
                     .on_click(cx.listener(|this, index, window, cx| {
                         this.active = *index;
-                        this.focus_terminal(window, cx);
+                        this.request_terminal_focus(window, cx);
                         cx.notify();
                     }))
                     .children(tab_titles.into_iter().map(|(index, title)| {
@@ -512,18 +610,49 @@ impl Render for AppShell {
                                 })),
                         )
                     }))
-                    .suffix(
-                        Button::new("new-tab")
-                            .icon(IconName::Plus)
+                    .suffix({
+                        let shells = self.shells.clone();
+                        let plus_tip = format!(
+                            "New tab — {} (Ctrl+T)",
+                            shells
+                                .first()
+                                .map(|s| s.label.as_str())
+                                .unwrap_or("Command Prompt")
+                        );
+                        let view = cx.entity();
+                        DropdownButton::new("new-tab")
                             .ghost()
                             .xsmall()
-                            .tooltip("New tab (Ctrl+T)")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.add_tab(cx);
-                                this.focus_terminal(window, cx);
-                                cx.notify();
-                            })),
-                    ),
+                            .button(
+                                Button::new("new-tab-plus")
+                                    .icon(IconName::Plus)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip(plus_tip)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.add_tab(cx);
+                                        this.request_terminal_focus(window, cx);
+                                        cx.notify();
+                                    })),
+                            )
+                            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                                let mut menu = menu;
+                                for profile in &shells {
+                                    let profile = profile.clone();
+                                    let view = view.clone();
+                                    menu = menu.item(
+                                        PopupMenuItem::new(profile.label.clone()).on_click(
+                                            move |_, window, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.spawn_profile(&profile, window, cx);
+                                                });
+                                            },
+                                        ),
+                                    );
+                                }
+                                menu
+                            })
+                    }),
             )
             .child(
                 div()
@@ -544,7 +673,7 @@ impl Render for AppShell {
                     .border_color(cx.theme().border)
                     .child(
                         Label::new(format!(
-                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F fps  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain cmd.exe",
+                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F fps  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain",
                             crate::mux_host::config_status(),
                             status_title,
                             status_line

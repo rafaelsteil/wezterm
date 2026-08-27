@@ -1,0 +1,6 @@
+{
+  "id": "033-last-tab-exit-quits",
+  "at": "2026-08-27T20:50:00Z",
+  "decision": "last_tab_process_exit_quits_app",
+  "rationale": "User after 032: it's better now; last-tab `exit` should fully close like wezterm-gui, not spawn a replacement shell. Default wezterm is exit_behavior Close + quit_when_all_windows_are_closed. Last-tab X still confirm_quit (process still running)."
+}

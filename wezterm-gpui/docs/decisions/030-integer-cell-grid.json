@@ -1,0 +1,6 @@
+{
+  "id": "030-integer-cell-grid",
+  "at": "2026-08-27T20:25:00Z",
+  "decision": "glyphs_on_ceiled_cell_grid_not_x_advance",
+  "rationale": "User after 029: 4K 120dpi still has a 1px sliver before the block cursor. cell_span only changed fill width; cursor left edge stayed round(col*cell_w) while glyphs accumulated HarfBuzz x_advance. Match wezterm-gui: ceil cell size in device px, advance num_cells*cell_w. Dest 1:1 (025) still applies. Keep 029 cell_span."
+}

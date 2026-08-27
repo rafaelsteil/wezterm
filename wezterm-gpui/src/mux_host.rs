@@ -7,10 +7,10 @@
 //! Still not `wezterm-gui` or `window/`. Paint is wezterm-font sprites
 //! in `glyph_paint.rs` (Consolas text fallback in `term_pane.rs`).
 //!
-//! Lua config is loaded (decision 020). Spawn still forces `cmd.exe` so a
-//! user `default_prog` cannot replace the POC shell.
+//! Lua config is loaded (decision 020). Plus / Ctrl+T still spawn Command
+//! Prompt (`%ComSpec%`); the new-tab chevron can spawn PowerShell (027).
+//! Lua `default_prog` / `launch_menu` stay unused.
 
-use std::ffi::OsString;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::Context as _;
@@ -83,8 +83,8 @@ fn init_inner() -> anyhow::Result<()> {
     config::assign_error_callback(|err| {
         eprintln!("wezterm-gpui config: {err}");
     });
-    // Load ~/.wezterm.lua (and the rest of the usual search path). Still
-    // force cmd.exe at spawn so `default_prog` cannot replace the shell.
+    // Load ~/.wezterm.lua (and the rest of the usual search path). Spawn
+    // still ignores lua `default_prog`; profiles live in `shells.rs` (027).
     // Disable the mux SSH agent: it creates runtime-dir symlinks we do not need.
     config::common_init(
         None,
@@ -121,16 +121,11 @@ fn init_inner() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Spawn Windows `cmd.exe` (or `%ComSpec%`) through mux `LocalDomain`.
-///
-/// This is the same host wezterm-gui uses for a local pane: `LocalDomain`
-/// opens ConPTY, builds `wezterm-term::Terminal`, wraps `LocalPane`, and the
-/// mux PTY reader thread feeds parsed actions into that pane.
-pub fn spawn_cmd_exe(size: TerminalSize) -> anyhow::Result<Arc<dyn Pane>> {
+/// Spawn `cmd` through mux `LocalDomain` (same host wezterm-gui uses:
+/// ConPTY + `wezterm-term` inside `LocalPane`).
+pub fn spawn_command(size: TerminalSize, cmd: CommandBuilder) -> anyhow::Result<Arc<dyn Pane>> {
     ensure_init()?;
     let domain = Mux::get().default_domain();
-    let prog = std::env::var_os("ComSpec").unwrap_or_else(|| OsString::from("cmd.exe"));
-    let cmd = CommandBuilder::new(prog);
     promise::spawn::block_on(domain.spawn_pane(size, Some(cmd), None))
-        .context("LocalDomain::spawn_pane cmd.exe")
+        .context("LocalDomain::spawn_pane")
 }
