@@ -99,9 +99,9 @@ impl AppShell {
         let palette = cx.new(|cx| CommandPalette::new(window, cx));
         cx.subscribe_in(&palette, window, |this, _, event, window, cx| {
             match event {
-                PaletteEvent::Executed(brief) => {
+                PaletteEvent::Executed(id) => {
                     this.palette_open = false;
-                    this.apply_command(brief, window, cx);
+                    this.apply_command(id, window, cx);
                     if !this.palette_open && !window.has_active_dialog(cx) {
                         this.focus_terminal(window, cx);
                     }
@@ -166,18 +166,20 @@ impl AppShell {
         .detach();
     }
 
-    fn apply_command(&mut self, brief: &str, window: &mut Window, cx: &mut Context<Self>) {
-        match brief {
-            "New Tab" => {
+    fn apply_command(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        match id {
+            "SpawnTab.CurrentPaneDomain" => {
                 self.add_tab(cx);
                 self.request_terminal_focus(window, cx);
             }
-            "Close current tab" | "Close current pane" => self.confirm_close_active(window, cx),
-            "Quit WezTerm" => self.confirm_quit(window, cx),
-            "Increase font size" => self.bump_font(1., cx),
-            "Decrease font size" => self.bump_font(-1., cx),
-            "Reset font size" => self.set_font(crate::mux_host::config_font_size(), cx),
-            "Clear scrollback" => {
+            "CloseCurrentTab.confirm" | "CloseCurrentPane.confirm" => {
+                self.confirm_close_active(window, cx)
+            }
+            "QuitApplication" => self.confirm_quit(window, cx),
+            "IncreaseFontSize" => self.bump_font(1., cx),
+            "DecreaseFontSize" => self.bump_font(-1., cx),
+            "ResetFontSize" => self.set_font(crate::mux_host::config_font_size(), cx),
+            "ClearScrollback.ScrollbackOnly" => {
                 if let Some(tab) = self.tabs.get(self.active) {
                     tab.term.update(cx, |term, cx| {
                         term.clear_scrollback();
@@ -185,17 +187,17 @@ impl AppShell {
                     });
                 }
             }
-            "Copy to clipboard" => {
+            "CopyTo.Clipboard" => {
                 self.copy_selection(window, cx, true);
             }
-            "Paste from clipboard" => {
+            "PasteFrom.Clipboard" => {
                 self.paste_clipboard(window, cx, true);
             }
-            "Activate Command Palette" => self.palette_open = true,
-            "Rename tab" | "Prompt the user for a line of text" => {
+            "ActivateCommandPalette" => self.palette_open = true,
+            "RenameTab" | "PromptInputLine" => {
                 self.open_rename_prompt(window, cx);
             }
-            "Prompt the user for confirmation" => self.open_demo_confirm(window, cx),
+            "Confirmation" => self.open_demo_confirm(window, cx),
             _ => {}
         }
     }

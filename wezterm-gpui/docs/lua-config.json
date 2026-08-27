@@ -34,8 +34,8 @@
     {
       "id": "command_palette_font",
       "key": "command_palette_font / command_palette_font_size",
-      "detail": "Palette parked. Do not start unless asked.",
-      "blocked_by": ["palette_parked"]
+      "detail": "Palette listing is 036; fonts still out. Do not start unless asked.",
+      "blocked_by": []
     },
     {
       "id": "adjust_window_size_when_changing_font_size",

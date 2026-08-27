@@ -8,6 +8,7 @@
 use freetype_sys as _;
 
 mod boxdraw;
+mod commands;
 mod confirm;
 mod glyph_paint;
 mod hello;

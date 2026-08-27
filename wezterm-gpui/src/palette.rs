@@ -1,40 +1,15 @@
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, StyledExt, WindowExt,
+    ActiveTheme, StyledExt,
     input::{Input, InputState},
     label::Label,
-    notification::Notification,
 };
 
-/// Hardcoded WezTerm-like commands for the POC. Not wired to mux/key assignments.
-const SAMPLE_COMMANDS: &[&str] = &[
-    "Copy to clipboard",
-    "Paste from clipboard",
-    "New Window",
-    "New Tab",
-    "Split pane horizontally",
-    "Split pane vertically",
-    "Toggle full screen mode",
-    "Search pane output",
-    "Clear scrollback",
-    "Activate Command Palette",
-    "Character Selector",
-    "Pane Selector",
-    "Rename tab",
-    "Prompt the user for confirmation",
-    "Prompt the user for a line of text",
-    "Reload configuration",
-    "Show debug overlay",
-    "Increase font size",
-    "Decrease font size",
-    "Reset font size",
-    "Close current pane",
-    "Close current tab",
-    "Quit WezTerm",
-];
+use crate::commands::{PALETTE_COMMANDS, PaletteCommand};
 
 pub enum PaletteEvent {
-    Executed(String),
+    Executed(&'static str),
     Dismissed,
 }
 
@@ -48,7 +23,9 @@ impl EventEmitter<PaletteEvent> for CommandPalette {}
 
 impl CommandPalette {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder("Type a command…"));
+        let query = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Type a command…  not-yet-implemented rows are dimmed")
+        });
         cx.observe(&query, |this, _, cx| {
             this.selected = 0;
             cx.notify();
@@ -79,9 +56,9 @@ impl CommandPalette {
     }
 
     pub fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let brief = self.filtered(cx).get(self.selected).copied();
-        if let Some(brief) = brief {
-            self.run(brief, window, cx);
+        let cmd = self.filtered(cx).get(self.selected).copied();
+        if let Some(cmd) = cmd {
+            self.run(cmd, window, cx);
         }
     }
 
@@ -90,22 +67,27 @@ impl CommandPalette {
         cx.notify();
     }
 
-    fn filtered(&self, cx: &App) -> Vec<&'static str> {
+    fn filtered(&self, cx: &App) -> Vec<&'static PaletteCommand> {
         let q = self.query.read(cx).value().to_lowercase();
-        SAMPLE_COMMANDS
+        PALETTE_COMMANDS
             .iter()
-            .copied()
-            .filter(|brief| q.is_empty() || brief.to_lowercase().contains(&q))
+            .filter(|cmd| q.is_empty() || cmd.haystack().to_lowercase().contains(&q))
             .collect()
     }
 
-    fn run(&mut self, brief: &str, window: &mut Window, cx: &mut Context<Self>) {
-        self.last_ran = Some(brief.to_string());
-        if !matches!(brief, "Copy to clipboard" | "Paste from clipboard") {
-            window.push_notification(Notification::info(format!("POC: would run `{brief}`")), cx);
+    fn run(&mut self, cmd: &'static PaletteCommand, _window: &mut Window, cx: &mut Context<Self>) {
+        if !cmd.is_wired() {
+            self.last_ran = Some(format!(
+                "Not yet implemented ({:?}): {}",
+                cmd.kind, cmd.brief
+            ));
+            println!("wezterm-gpui palette listed (not wired): {} ({})", cmd.id, cmd.brief);
+            cx.notify();
+            return;
         }
-        println!("wezterm-gpui palette: {brief}");
-        cx.emit(PaletteEvent::Executed(brief.to_string()));
+        self.last_ran = Some(cmd.brief.to_string());
+        println!("wezterm-gpui palette: {} ({})", cmd.id, cmd.brief);
+        cx.emit(PaletteEvent::Executed(cmd.id));
         cx.notify();
     }
 }
@@ -118,16 +100,19 @@ impl Render for CommandPalette {
         } else {
             self.selected.min(matches.len() - 1)
         };
-        let status = self
-            .last_ran
-            .as_deref()
-            .unwrap_or("Type to filter · ↑↓ select · Enter run · Esc close");
+        let status = self.last_ran.clone().unwrap_or_else(|| {
+            let n = matches.len();
+            let wired = matches.iter().filter(|c| c.is_wired()).count();
+            format!(
+                "{n} commands · {wired} wired · dimmed = not yet · ↑↓ select · Enter run · Esc close"
+            )
+        });
 
         div()
             .id("command-palette")
             .v_flex()
-            .w(px(560.))
-            .max_h(px(440.))
+            .w(px(720.))
+            .max_h(px(520.))
             .p_3()
             .gap_2()
             .rounded_lg()
@@ -147,36 +132,72 @@ impl Render for CommandPalette {
                     .id("command-list")
                     .flex_1()
                     .w_full()
-                    .min_h(px(180.))
-                    .max_h(px(280.))
+                    .min_h(px(220.))
+                    .max_h(px(360.))
                     .overflow_y_scroll()
                     .v_flex()
                     .gap_1()
-                    .children(matches.into_iter().enumerate().map(|(ix, brief)| {
-                        let label = brief.to_string();
-                        let run_brief = brief;
+                    .children(matches.into_iter().enumerate().map(|(ix, cmd)| {
                         let is_sel = ix == selected;
+                        let wired = cmd.is_wired();
+                        let fg = if wired {
+                            cx.theme().foreground
+                        } else {
+                            cx.theme().muted_foreground
+                        };
+                        let title = format!("{}: {}", cmd.menubar, cmd.brief);
                         div()
                             .id(("cmd", ix as u64))
                             .w_full()
                             .px_3()
                             .py_2()
                             .rounded_md()
+                            .opacity(if wired { 1. } else { 0.62 })
                             .bg(if is_sel {
-                                cx.theme().accent.opacity(0.22)
+                                cx.theme().accent.opacity(if wired { 0.22 } else { 0.10 })
                             } else {
                                 cx.theme().background.opacity(0.)
                             })
-                            .hover(|s| s.bg(cx.theme().accent.opacity(0.15)))
-                            .cursor_pointer()
+                            .hover(|s| s.bg(cx.theme().accent.opacity(if wired { 0.15 } else { 0.08 })))
+                            .when(wired, |s| s.cursor_pointer())
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.run(run_brief, window, cx);
+                                this.run(cmd, window, cx);
                             }))
-                            .child(Label::new(label))
+                            .child(
+                                div()
+                                    .w_full()
+                                    .h_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w(px(0.))
+                                            .v_flex()
+                                            .gap_1()
+                                            .child(
+                                                Label::new(title)
+                                                    .text_size(px(13.))
+                                                    .text_color(fg),
+                                            )
+                                            .child(
+                                                Label::new(cmd.doc.to_string())
+                                                    .text_size(px(11.))
+                                                    .text_color(cx.theme().muted_foreground),
+                                            ),
+                                    )
+                                    .when(!cmd.keys.is_empty(), |this| {
+                                        this.child(
+                                            Label::new(cmd.keys.to_string())
+                                                .text_size(px(11.))
+                                                .text_color(cx.theme().muted_foreground),
+                                        )
+                                    }),
+                            )
                     })),
             )
             .child(
-                Label::new(status.to_string())
+                Label::new(status)
                     .text_size(px(12.))
                     .text_color(cx.theme().muted_foreground),
             )

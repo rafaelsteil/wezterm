@@ -1,0 +1,7 @@
+{
+  "id": "036-command-palette-and-launcher-matrix",
+  "at": "2026-08-27T22:20:00Z",
+  "decision": "palette_and_launcher_ops_tracked_in_json_kind_call_core_vs_gpui",
+  "rationale": "User asked to prepare for every command-palette and launcher operation and to classify each as a wezterm-core call vs a GPUI surface, same pattern as lua-config.json. Live files: docs/command-palette.json and docs/launcher.json. Palette items come from wezterm-gui CommandDef (commands.rs), not a hardcoded POC handful. Launcher is a termwiz overlay that also dumps COMMANDS+KEY_ASSIGNMENTS; do not clone that UI. GPUI palette lists the full Windows default catalog with unimplemented rows dimmed. Do not path-dep wezterm-gui; dispatch by catalog id.",
+  "record": "docs/plans/036-command-palette-and-launcher-matrix.md"
+}

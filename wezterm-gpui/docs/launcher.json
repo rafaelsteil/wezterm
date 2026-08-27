@@ -1,0 +1,194 @@
+{
+  "id": "wezterm-gpui-launcher",
+  "schema_version": 1,
+  "updated": "2026-08-27T22:20:00Z",
+  "legacy": "wezterm-gui/src/overlay/launcher.rs. Trigger: right-click tab-bar Plus (mouseevent do_new_tab_button_click → ShowLauncher). Also ShowLauncher / ShowLauncherArgs / ShowTabNavigator key assignments.",
+  "gpui": "not cloned as a termwiz overlay. 027 chevron is the GPUI new-tab menu (cmd / PowerShell). Palette lists ShowLauncher dimmed. Unique ops tracked here; COMMANDS+KEY_ASSIGNMENTS overlap docs/command-palette.json.",
+  "note": "Per-operation tracker for the wezterm-gui Launcher. STATE.json points here. Append; never delete rows. gpui: wired | listed | needs_mux | needs_gpui | parked | n_a. kind: call_core | gpui_window | gpui_ui | dynamic. user_try: ok | not_tested | n_a. Recommendation: do not clone the overlay. Domain/workspace/launch_menu are mux calls; the rest is a second dump of the palette.",
+  "stats": {
+    "sources": 6,
+    "unique_ops": 12,
+    "overlap_palette": true
+  },
+  "recommendation": "Do not recreate the 80-item termwiz list. Expose domain spawn (when mux has WSL/unix), workspaces, and lua launch_menu as first-class actions (palette extras and/or the 027 chevron). COMMANDS and KEY_ASSIGNMENTS stay on the command palette.",
+  "how_wezterm_builds_it": {
+    "trigger": "Right-click Plus on the tab bar; ShowLauncher; ShowLauncherArgs; ShowTabNavigator uses TABS only",
+    "default_flags": [
+      "LAUNCH_MENU_ITEMS",
+      "WORKSPACES",
+      "DOMAINS",
+      "KEY_ASSIGNMENTS",
+      "COMMANDS"
+    ],
+    "tab_navigator_flags": ["TABS"],
+    "help": "Select an item and press Enter=launch  Esc=cancel  /=filter",
+    "alphabet": "config.launcher_alphabet numbers the first N rows (screenshot 1–9)",
+    "execute": "same KeyAssignment as the palette (perform_key_assignment)"
+  },
+  "sources": [
+    {
+      "id": "LAUNCH_MENU_ITEMS",
+      "kind": "dynamic",
+      "core": "config.launch_menu → SpawnCommandInNewTab",
+      "gpui": "parked",
+      "notes": "User lua. Do not honor unless asked (027/034). Same as command-palette dynamic.launch_menu."
+    },
+    {
+      "id": "DOMAINS",
+      "kind": "dynamic",
+      "core": "mux.iter_domains spawnable: Attached → New Tab (domain `name`); else Attach domain",
+      "gpui": "needs_mux",
+      "notes": "Screenshot: local, WSL:MuleLinux, WSL:Ubuntu, WSL:docker-desktop, WSL:docker-desktop-data, Attach unix. GPUI mux registers only LocalDomain in mux_host::init_inner."
+    },
+    {
+      "id": "WORKSPACES",
+      "kind": "dynamic",
+      "core": "mux.iter_workspaces + SwitchToWorkspace { name: None } to create",
+      "gpui": "needs_mux",
+      "notes": "Screenshot: Create new Workspace (current is `default`). POC has no workspace UI."
+    },
+    {
+      "id": "TABS",
+      "kind": "gpui_window",
+      "core": "ActivateTab(idx) for each mux window tab",
+      "gpui": "n_a",
+      "notes": "Not in default ShowLauncher. ShowTabNavigator only. Tab bar already switches tabs."
+    },
+    {
+      "id": "COMMANDS",
+      "kind": "gpui_ui",
+      "core": "CommandDef::expanded_commands (same as palette, minus ActivateTab noise)",
+      "gpui": "listed",
+      "notes": "This is why the launcher repeats New Window, splits, copy, font size, scroll, fullscreen…. Track status in command-palette.json, not twice."
+    },
+    {
+      "id": "KEY_ASSIGNMENTS",
+      "kind": "gpui_ui",
+      "core": "InputMap default keys, deduped by action, skip ActivateTab*",
+      "gpui": "listed",
+      "notes": "Second copy of bound actions. Palette already sweeps InputMap in wezterm-gui. Do not duplicate in GPUI."
+    }
+  ],
+  "operations": [
+    {
+      "id": "NewTab.domain.local",
+      "brief": "New Tab (domain 'local')",
+      "action": "SpawnCommandInNewTab { domain: DomainName(\"local\") }",
+      "kind": "call_core",
+      "core": "LocalDomain::spawn_pane — already Plus / Ctrl+T / palette New Tab",
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "027 user-ok as Command Prompt, not as a launcher row. Functionally the default domain spawn."
+    },
+    {
+      "id": "NewTab.domain.wsl",
+      "brief": "New Tab (domain 'WSL:…')",
+      "action": "SpawnCommandInNewTab { domain: DomainName(\"WSL:…\") }",
+      "kind": "call_core",
+      "core": "mux WslDomain (config wsl_domains / WslDomain::default_domains) then spawn_pane",
+      "gpui": "needs_mux",
+      "user_try": "not_tested",
+      "notes": "Screenshot lists MuleLinux, Ubuntu, docker-desktop, docker-desktop-data. Register WSL domains in mux_host like wezterm-gui. Spawn is then a core call; no special GPUI widget."
+    },
+    {
+      "id": "AttachDomain.unix",
+      "brief": "Attach domain 'unix' - unix mux …\\sock",
+      "action": "AttachDomain(\"unix\")",
+      "kind": "call_core",
+      "core": "mux Unix domain attach (wezterm-client)",
+      "gpui": "needs_mux",
+      "user_try": "not_tested",
+      "notes": "Screenshot path C:\\Users\\rafael\\.local/share/wezterm\\sock. Attach is mux; listing is dynamic. Not LocalPane."
+    },
+    {
+      "id": "SwitchToWorkspace.create",
+      "brief": "Create new Workspace (current is 'default')",
+      "action": "SwitchToWorkspace { name: None, spawn: None }",
+      "kind": "call_core",
+      "core": "mux workspace create + switch",
+      "gpui": "needs_mux",
+      "user_try": "not_tested",
+      "notes": "Optional GPUI prompt for the workspace name (wezterm-gui may prompt). Mux owns the list."
+    },
+    {
+      "id": "ReloadConfiguration",
+      "brief": "Reload configuration",
+      "action": "ReloadConfiguration",
+      "kind": "call_core",
+      "core": "config::reload()",
+      "gpui": "listed",
+      "user_try": "not_tested",
+      "notes": "Numbered row 8 on the screenshot because launcher_alphabet. Same row as palette ReloadConfiguration. Live lua reload still parked."
+    },
+    {
+      "id": "NewTab",
+      "brief": "New Tab",
+      "action": "SpawnTab(CurrentPaneDomain)",
+      "kind": "call_core",
+      "core": "same as palette SpawnTab.CurrentPaneDomain",
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "Screenshot unnumbered + numbered 9. Plus / Ctrl+T."
+    },
+    {
+      "id": "SpawnWindow",
+      "brief": "New Window",
+      "action": "SpawnWindow",
+      "kind": "gpui_window",
+      "core": "see command-palette.json",
+      "gpui": "listed",
+      "user_try": "not_tested",
+      "notes": "COMMANDS dump. Second GPUI HWND."
+    },
+    {
+      "id": "SplitVertical",
+      "brief": "Split Vertically (Top/Bottom)",
+      "action": "SplitVertical",
+      "kind": "call_core",
+      "core": "mux Tab split",
+      "gpui": "listed",
+      "user_try": "not_tested",
+      "notes": "COMMANDS dump. Needs GPUI split layout. See palette splits backlog."
+    },
+    {
+      "id": "SplitHorizontal",
+      "brief": "Split Horizontally (Left/Right)",
+      "action": "SplitHorizontal",
+      "kind": "call_core",
+      "core": "mux Tab split",
+      "gpui": "listed",
+      "user_try": "not_tested",
+      "notes": "COMMANDS dump."
+    },
+    {
+      "id": "CloseCurrentTab",
+      "brief": "Close current Tab",
+      "action": "CloseCurrentTab { confirm: true }",
+      "kind": "gpui_window",
+      "core": "see command-palette.json",
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "COMMANDS dump. Already wired in palette / tab X."
+    },
+    {
+      "id": "CloseCurrentPane",
+      "brief": "Close current Pane",
+      "action": "CloseCurrentPane { confirm: true }",
+      "kind": "call_core",
+      "core": "see command-palette.json",
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "COMMANDS dump. Same as close tab while there are no splits."
+    },
+    {
+      "id": "commands_and_key_assignments_tail",
+      "brief": "Detach, Reset, Paste/Copy, Clear scroll, QuickSelect, CharSelect, Copy Mode, palette, font size, scroll, fullscreen, always-on-top, …",
+      "action": "CommandDef + InputMap",
+      "kind": "gpui_ui",
+      "core": "see docs/command-palette.json for each action",
+      "gpui": "listed",
+      "user_try": "n_a",
+      "notes": "Screenshot tail is the palette. Do not maintain a second status list. Usability of this dump is why we are not cloning the overlay."
+    }
+  ]
+}
