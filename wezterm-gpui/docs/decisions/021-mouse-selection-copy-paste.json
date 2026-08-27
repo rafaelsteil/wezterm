@@ -1,0 +1,6 @@
+{
+  "id": "021-mouse-selection-copy-paste",
+  "at": "2026-08-27T15:00:00Z",
+  "decision": "gpui_selection_is_gui_side_like_wezterm_gui",
+  "rationale": "User asked for mouse selection + copy/paste. Selection lives on TermPane (not mux), same model as wezterm-gui TermWindow.selection. Left drag selects cells; double-click word; triple-click line. Copy is Ctrl+Shift+C / Ctrl+Insert / palette; paste is Ctrl+Shift+V / Shift+Insert / palette → Pane::send_paste. SHIFT bypasses mouse-grab so vim/less still get PTY mouse. Lua mouse_bindings stay out. No window/ cutover."
+}

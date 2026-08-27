@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-27T14:36:00Z",
+  "updated": "2026-08-27T15:44:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "020 lua + Dracula/Cascadia **user-ok** (“works like a charm”) after BGRA swap and coverage blit. Next: visual leftovers vs wezterm-gui if they still get in the way. FPS HUD off (019). ConPTY junk later (018). Palette parked.",
+      "action": "021 selection **user-ok** (drag/copy/paste + wrapped triple-click after get_logical_lines). User will report more bugs next session. Until then: visual leftovers vs wezterm-gui (box-draw, per-cell clip). FPS HUD off (019). ConPTY junk later (018). Palette parked. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 120dpi user-ok. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok** (BGRA + coverage blit). ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 120dpi user-ok. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok** (BGRA + coverage blit). 021 selection/copy/paste **user-ok** including wrapped triple-click. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -106,6 +106,11 @@
       "id": "lua-config-first-slice",
       "status": "done",
       "notes": "Load wezterm.lua (skip_config=false). Apply font, font_size, color_scheme, scrollback_lines, audible_bell. Still force cmd.exe. User-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui after BGRA swap + coverage blit (“works like a charm”)."
+    },
+    {
+      "id": "mouse-selection-copy-paste",
+      "status": "done",
+      "notes": "GUI-side TermPane selection (not mux). Drag / double-click word / triple-click logical line. User-tried 2026-08-27: copy/paste/drag ok; wrapped triple-click was physical-only then **user-ok** after get_logical_lines (“works”)."
     },
     {
       "id": "delete-old-ui",
@@ -243,6 +248,12 @@
       "decision": "load_wezterm_lua_apply_paint_settings",
       "rationale": "User asked to honor lua config. First slice: font, font_size, color_scheme, scrollback_lines, audible_bell. Keep forcing cmd.exe. No chrome keys, mouse bindings, or live reload.",
       "record": "docs/decisions/020-lua-config-first-slice.json"
+    },
+    {
+      "at": "2026-08-27T15:00:00Z",
+      "decision": "gpui_selection_is_gui_side_like_wezterm_gui",
+      "rationale": "User asked for mouse selection + copy/paste. Selection lives on TermPane, not mux. Drag/word/line; Ctrl+Shift+C/V; Pane::send_paste. Lua mouse_bindings stay out.",
+      "record": "docs/decisions/021-mouse-selection-copy-paste.json"
     }
   ],
   "constraints": [
@@ -311,6 +322,12 @@
       "legacy": "config::common_init + ~/.wezterm.lua",
       "gpui": "wezterm-gpui/src/mux_host.rs + glyph_paint.rs + shell.rs",
       "e2e": "user-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui (“works like a charm”); still cmd.exe"
+    },
+    "selection_copy_paste": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui/src/selection.rs + termwindow/mouseevent.rs",
+      "gpui": "wezterm-gpui/src/term_pane.rs Selection + glyph_paint.rs sel tint + shell.rs Ctrl+Shift+C/V",
+      "e2e": "user-tried 2026-08-27: drag/copy/paste ok; wrapped triple-click ok after get_logical_lines (“works”)"
     },
     "scrollback_viewport": {
       "status": "poc_user_ok",
@@ -515,6 +532,21 @@
       "at": "2026-08-27T14:36:00Z",
       "id": "lua_colors_and_glyph_weight_user_ok",
       "detail": "User retry after coverage blit: “that's it, works like a charm.” Cascadia weight + Dracula colors match wezterm-gui well enough. Lua first slice (font/size/scheme/scrollback/bell) is user-ok."
+    },
+    {
+      "at": "2026-08-27T15:00:00Z",
+      "id": "mouse_selection_copy_paste_wired",
+      "detail": "TermPane GUI-side selection (not mux). Left drag cell range; double-click word via selection_word_boundary; triple-click line. Line sprites tint selection_bg/fg (RowKey includes range). Copy Ctrl+Shift+C / Ctrl+Insert; paste Ctrl+Shift+V / Shift+Insert / Pane::send_paste. SHIFT bypasses mouse-grab. Lua mouse_bindings not wired. cargo check --manifest-path wezterm-gpui/Cargo.toml green. Not user-tried."
+    },
+    {
+      "at": "2026-08-27T15:15:00Z",
+      "id": "selection_triple_click_physical_not_logical",
+      "detail": "User 2026-08-27: 021 drag/copy/paste ok. Triple-click on a wrapped dir line (junction Templates path) only highlighted the first physical row. wezterm-gui uses Pane::get_logical_lines so the selection covers every wrapped row. GPUI line_around/word_around used get_lines for one physical row. Fix: same logical-line range as wezterm-gui (end x = usize::MAX on last physical row)."
+    },
+    {
+      "at": "2026-08-27T15:44:00Z",
+      "id": "selection_wrapped_triple_click_user_ok",
+      "detail": "User retry 2026-08-27 after logical-line fix: “works.” Triple-click on wrapped dir junction line highlights all physical rows. 021 selection/copy/paste is user-ok. User will report more bugs in a new session."
     }
   ],
   "blockers": [],
@@ -533,6 +565,7 @@
     "palette_charselect": "parked",
     "conpty_vertical_junk": "also_in_wezterm_gui_polish_later",
     "gpui_fps_hud": "wired_off_by_default_come_back_later",
-    "lua_config": "user_ok_font_scheme_scrollback_bell"
+    "lua_config": "user_ok_font_scheme_scrollback_bell",
+    "selection_copy_paste": "user_ok"
   }
 }

@@ -14,7 +14,9 @@ use mux::pane::{Pane, PaneId};
 use mux::renderable::RenderableDimensions;
 use mux::{Mux, MuxNotification};
 use wezterm_term::color::ColorPalette;
-use wezterm_term::input::{MouseButton, MouseEvent, MouseEventKind};
+use wezterm_term::input::{
+    MouseButton as TermMouseButton, MouseEvent as TermMouseEvent, MouseEventKind,
+};
 use wezterm_term::{Alert, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
 
 use crate::glyph_paint::{GlyphPainter, TermPaint};
@@ -44,6 +46,9 @@ pub struct TermPane {
     pty_commit_gen: u64,
     /// Skip HarfBuzz + row composite when the pane has not changed.
     paint_cache: Option<PaintCache>,
+    /// GUI-side selection (same model as wezterm-gui `TermWindow.selection`).
+    /// Not stored in the mux pane.
+    selection: Selection,
 }
 
 struct PaintCache {
@@ -54,6 +59,7 @@ struct PaintCache {
     rows: usize,
     dpi: u32,
     font_px: u32,
+    sel: Option<(i64, u32, i64, u32)>,
     paint: TermPaint,
 }
 
@@ -78,6 +84,7 @@ impl TermPane {
                 viewport: None,
                 pty_commit_gen: 0,
                 paint_cache: None,
+                selection: Selection::default(),
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
@@ -89,6 +96,7 @@ impl TermPane {
                 viewport: None,
                 pty_commit_gen: 0,
                 paint_cache: None,
+                selection: Selection::default(),
             },
         }
     }
@@ -141,13 +149,16 @@ impl TermPane {
         }
     }
 
-    pub fn key_down(&mut self, event: &KeyDownEvent) -> bool {
+    pub fn key_down(&mut self, event: &KeyDownEvent, _cx: &mut App) -> bool {
         let Ok(live) = self.live.as_mut() else {
             return false;
         };
         let Some((key, mods)) = map_keystroke(&event.keystroke) else {
             return false;
         };
+        if self.selection.clear() {
+            self.paint_cache = None;
+        }
         self.viewport = None;
         live.pane.key_down(key, mods).ok();
         true
@@ -172,11 +183,11 @@ impl TermPane {
         }
         if live.pane.is_mouse_grabbed() || live.pane.is_alt_screen_active() {
             let button = if y > 0 {
-                MouseButton::WheelUp(y as usize)
+                TermMouseButton::WheelUp(y as usize)
             } else {
-                MouseButton::WheelDown((-y) as usize)
+                TermMouseButton::WheelDown((-y) as usize)
             };
-            let _ = live.pane.mouse_event(MouseEvent {
+            let _ = live.pane.mouse_event(TermMouseEvent {
                 kind: MouseEventKind::Press,
                 x: 0,
                 y: 0,
@@ -189,6 +200,218 @@ impl TermPane {
         }
         // GPUI Windows: positive y is wheel away from user (see older history).
         self.scroll_by_line(-y);
+    }
+
+    pub fn copy_selection(&self, cx: &mut App) -> bool {
+        let text = self.selection_text();
+        if text.is_empty() {
+            return false;
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        true
+    }
+
+    pub fn paste_clipboard(&mut self, cx: &mut App) -> bool {
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            return false;
+        };
+        if text.is_empty() {
+            return false;
+        }
+        let Ok(live) = &self.live else {
+            return false;
+        };
+        if self.selection.clear() {
+            self.paint_cache = None;
+        }
+        self.viewport = None;
+        live.pane.send_paste(&text).ok();
+        true
+    }
+
+    fn selection_text(&self) -> String {
+        let Ok(live) = &self.live else {
+            return String::new();
+        };
+        let Some(sel) = self.selection.range.map(SelRange::normalize) else {
+            return String::new();
+        };
+        let mut s = String::new();
+        let mut last_was_wrapped = false;
+        let first_row = sel.start.y;
+        let last_row = sel.end.y + 1;
+        for line in live.pane.get_logical_lines(first_row..last_row) {
+            if !s.is_empty() && !last_was_wrapped {
+                s.push('\n');
+            }
+            let last_idx = line.physical_lines.len().saturating_sub(1);
+            for (idx, phys) in line.physical_lines.iter().enumerate() {
+                let this_row = line.first_row + idx as StableRowIndex;
+                if this_row < first_row || this_row >= last_row {
+                    continue;
+                }
+                let last_phys_idx = phys.len().saturating_sub(1);
+                let cols = sel.cols_for_row(this_row);
+                let last_col_idx = cols.end.saturating_sub(1).min(last_phys_idx);
+                let col_span = phys.columns_as_str(cols);
+                if idx == last_idx {
+                    s.push_str(col_span.trim_end());
+                } else {
+                    s.push_str(&col_span);
+                }
+                last_was_wrapped = last_col_idx == last_phys_idx
+                    && phys
+                        .get_cell(last_col_idx)
+                        .map(|c| c.attrs().wrapped())
+                        .unwrap_or(false);
+            }
+        }
+        s
+    }
+
+    fn on_mouse_down(
+        &mut self,
+        pos: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        click_count: usize,
+        modifiers: &Modifiers,
+    ) {
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let Some(hit) = self.hit_cell(pos, bounds, false) else {
+            return;
+        };
+        if live.pane.is_mouse_grabbed() && !modifiers.shift {
+            self.send_pty_mouse(MouseEventKind::Press, TermMouseButton::Left, hit, modifiers);
+            return;
+        }
+        self.selection.dragging = true;
+        self.selection.origin = Some(hit.pos);
+        self.selection.mode = match click_count {
+            2 => SelMode::Word,
+            n if n >= 3 => SelMode::Line,
+            _ => SelMode::Cell,
+        };
+        self.selection.range = match self.selection.mode {
+            SelMode::Cell => None,
+            SelMode::Word => Some(word_around(&*live.pane, hit.pos)),
+            SelMode::Line => Some(line_around(&*live.pane, hit.pos)),
+        };
+        self.paint_cache = None;
+    }
+
+    fn on_mouse_drag(
+        &mut self,
+        pos: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        modifiers: &Modifiers,
+    ) -> bool {
+        let Ok(live) = &self.live else {
+            return false;
+        };
+        let Some(hit) = self.hit_cell(pos, bounds, true) else {
+            return false;
+        };
+        if live.pane.is_mouse_grabbed() && !modifiers.shift && !self.selection.dragging {
+            self.send_pty_mouse(MouseEventKind::Move, TermMouseButton::Left, hit, modifiers);
+            return false;
+        }
+        if !self.selection.dragging {
+            return false;
+        }
+        let origin = self.selection.origin.unwrap_or(hit.pos);
+        let next = match self.selection.mode {
+            SelMode::Cell => SelRange {
+                start: origin,
+                end: hit.pos,
+            },
+            SelMode::Word => union_range(
+                word_around(&*live.pane, origin),
+                word_around(&*live.pane, hit.pos),
+            ),
+            SelMode::Line => union_range(
+                line_around(&*live.pane, origin),
+                line_around(&*live.pane, hit.pos),
+            ),
+        };
+        if self.selection.range != Some(next) {
+            self.selection.range = Some(next);
+            self.paint_cache = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn on_mouse_up(&mut self, pos: Point<Pixels>, bounds: Bounds<Pixels>, modifiers: &Modifiers) {
+        let was_dragging = self.selection.dragging;
+        self.selection.dragging = false;
+        let Ok(live) = &self.live else {
+            return;
+        };
+        if live.pane.is_mouse_grabbed() && !modifiers.shift && !was_dragging {
+            if let Some(hit) = self.hit_cell(pos, bounds, true) {
+                self.send_pty_mouse(MouseEventKind::Release, TermMouseButton::Left, hit, modifiers);
+            }
+        }
+    }
+
+    fn send_pty_mouse(
+        &self,
+        kind: MouseEventKind,
+        button: TermMouseButton,
+        hit: CellHit,
+        modifiers: &Modifiers,
+    ) {
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let _ = live.pane.mouse_event(TermMouseEvent {
+            kind,
+            x: hit.pos.x,
+            y: hit.vis_row as i64,
+            x_pixel_offset: hit.x_pixel_offset,
+            y_pixel_offset: hit.y_pixel_offset,
+            button,
+            modifiers: gpui_mods(modifiers),
+        });
+    }
+
+    fn hit_cell(&self, pos: Point<Pixels>, bounds: Bounds<Pixels>, clamp: bool) -> Option<CellHit> {
+        let Ok(live) = &self.live else {
+            return None;
+        };
+        let (cw, ch) = self.cell_px();
+        if cw < 1. || ch < 1. {
+            return None;
+        }
+        let dims = live.pane.get_dimensions();
+        if dims.cols < 1 || dims.viewport_rows < 1 {
+            return None;
+        }
+        let mut x = f32::from(pos.x - bounds.origin.x);
+        let mut y = f32::from(pos.y - bounds.origin.y);
+        if !clamp && (x < 0. || y < 0. || x >= f32::from(bounds.size.width) || y >= f32::from(bounds.size.height))
+        {
+            return None;
+        }
+        x = x.max(0.0);
+        y = y.max(0.0);
+        let col = (x / cw).floor() as usize;
+        let vis_row = (y / ch).floor() as usize;
+        let col = col.min(dims.cols.saturating_sub(1));
+        let vis_row = vis_row.min(dims.viewport_rows.saturating_sub(1));
+        let stable = self.paint_top(&dims).saturating_add(vis_row as isize);
+        Some(CellHit {
+            pos: CellPos {
+                y: stable,
+                x: col,
+            },
+            vis_row,
+            x_pixel_offset: (x - col as f32 * cw) as isize,
+            y_pixel_offset: (y - vis_row as f32 * ch) as isize,
+        })
     }
 
     fn cell_px(&self) -> (f32, f32) {
@@ -404,6 +627,7 @@ impl TermPane {
             .filter(|row| *row < dims.viewport_rows);
         let cursor = vis_row.map(|row| (row, cursor_pos.x));
         let font_px = self.font_px.to_bits();
+        let sel = self.selection.fingerprint();
         if let Some(cache) = &self.paint_cache {
             if cache.seq == seq
                 && cache.top == top
@@ -412,6 +636,7 @@ impl TermPane {
                 && cache.rows == dims.viewport_rows
                 && cache.dpi == dims.dpi
                 && cache.font_px == font_px
+                && cache.sel == sel
             {
                 let mut paint = cache.paint.clone();
                 paint.drop_images = Vec::new();
@@ -421,9 +646,17 @@ impl TermPane {
         let pal = live.pane.palette();
         let end = top.saturating_add(dims.viewport_rows as isize);
         let (_, lines) = live.pane.get_lines(top..end);
+        let sel_cols: Vec<(u16, u16)> = (0..lines.len())
+            .map(|row| {
+                self.selection
+                    .range
+                    .map(|r| r.normalize().sel_cols(top.saturating_add(row as isize), dims.cols))
+                    .unwrap_or((u16::MAX, u16::MAX))
+            })
+            .collect();
         let painter = self.painter.as_mut()?;
         painter.sync_font(self.font_px, painter.dpi());
-        match painter.layout(&lines, cursor, &pal, dims.cols) {
+        match painter.layout(&lines, cursor, &pal, dims.cols, &sel_cols) {
             Ok(paint) => {
                 self.paint_cache = Some(PaintCache {
                     seq,
@@ -433,6 +666,7 @@ impl TermPane {
                     rows: dims.viewport_rows,
                     dpi: dims.dpi,
                     font_px,
+                    sel,
                     paint: TermPaint {
                         bg: paint.bg,
                         sprites: paint.sprites.clone(),
@@ -460,6 +694,186 @@ impl Drop for TermPane {
                 mux.remove_pane(live.pane.pane_id());
             }
         }
+    }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct CellPos {
+    y: StableRowIndex,
+    x: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct SelRange {
+    start: CellPos,
+    end: CellPos,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum SelMode {
+    #[default]
+    Cell,
+    Word,
+    Line,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Selection {
+    origin: Option<CellPos>,
+    range: Option<SelRange>,
+    dragging: bool,
+    mode: SelMode,
+}
+
+struct CellHit {
+    pos: CellPos,
+    vis_row: usize,
+    x_pixel_offset: isize,
+    y_pixel_offset: isize,
+}
+
+impl Selection {
+    fn clear(&mut self) -> bool {
+        let changed = self.range.is_some() || self.origin.is_some() || self.dragging;
+        self.range = None;
+        self.origin = None;
+        self.dragging = false;
+        changed
+    }
+
+    fn fingerprint(&self) -> Option<(i64, u32, i64, u32)> {
+        let r = self.range?.normalize();
+        Some((
+            r.start.y as i64,
+            r.start.x.min(u32::MAX as usize) as u32,
+            r.end.y as i64,
+            r.end.x.min(u32::MAX as usize) as u32,
+        ))
+    }
+}
+
+impl SelRange {
+    fn normalize(self) -> Self {
+        if self.start <= self.end {
+            self
+        } else {
+            Self {
+                start: self.end,
+                end: self.start,
+            }
+        }
+    }
+
+    fn cols_for_row(self, row: StableRowIndex) -> std::ops::Range<usize> {
+        let n = self.normalize();
+        if row < n.start.y || row > n.end.y {
+            0..0
+        } else if n.start.y == n.end.y {
+            let (lo, hi) = if n.start.x <= n.end.x {
+                (n.start.x, n.end.x)
+            } else {
+                (n.end.x, n.start.x)
+            };
+            lo..hi.saturating_add(1)
+        } else if row == n.end.y {
+            0..n.end.x.saturating_add(1)
+        } else if row == n.start.y {
+            n.start.x..usize::MAX
+        } else {
+            0..usize::MAX
+        }
+    }
+
+    fn sel_cols(self, row: StableRowIndex, cols: usize) -> (u16, u16) {
+        let range = self.cols_for_row(row);
+        if range.is_empty() {
+            return (u16::MAX, u16::MAX);
+        }
+        let start = range.start.min(cols) as u16;
+        let end = range.end.min(cols) as u16;
+        if start >= end {
+            (u16::MAX, u16::MAX)
+        } else {
+            (start, end)
+        }
+    }
+}
+
+fn union_range(a: SelRange, b: SelRange) -> SelRange {
+    let a = a.normalize();
+    let b = b.normalize();
+    SelRange {
+        start: a.start.min(b.start),
+        end: a.end.max(b.end),
+    }
+}
+
+fn is_word_cell(line: &Line, col: usize, boundary: &str) -> bool {
+    let Some(cell) = line.get_cell(col) else {
+        return false;
+    };
+    let s = cell.str();
+    match s.chars().count() {
+        0 => false,
+        1 => !boundary.contains(s),
+        _ => true,
+    }
+}
+
+fn word_around(pane: &dyn Pane, pos: CellPos) -> SelRange {
+    for logical in pane.get_logical_lines(pos.y..pos.y + 1) {
+        if !logical.contains_y(pos.y) {
+            continue;
+        }
+        let click = logical.xy_to_logical_x(pos.x, pos.y);
+        let boundary = &config::configuration().selection_word_boundary;
+        if !is_word_cell(&logical.logical, click, boundary) {
+            return SelRange {
+                start: pos,
+                end: pos,
+            };
+        }
+        let mut start = click;
+        let mut end = click;
+        while start > 0 && is_word_cell(&logical.logical, start - 1, boundary) {
+            start -= 1;
+        }
+        while is_word_cell(&logical.logical, end + 1, boundary) {
+            end += 1;
+        }
+        let (sy, sx) = logical.logical_x_to_physical_coord(start);
+        let (ey, ex) = logical.logical_x_to_physical_coord(end);
+        return SelRange {
+            start: CellPos { y: sy, x: sx },
+            end: CellPos { y: ey, x: ex },
+        };
+    }
+    SelRange {
+        start: pos,
+        end: pos,
+    }
+}
+
+fn line_around(pane: &dyn Pane, pos: CellPos) -> SelRange {
+    for logical in pane.get_logical_lines(pos.y..pos.y + 1) {
+        if !logical.contains_y(pos.y) {
+            continue;
+        }
+        let last = logical.physical_lines.len().saturating_sub(1);
+        return SelRange {
+            start: CellPos {
+                y: logical.first_row,
+                x: 0,
+            },
+            end: CellPos {
+                y: logical.first_row + last as StableRowIndex,
+                x: usize::MAX,
+            },
+        };
+    }
+    SelRange {
+        start: pos,
+        end: pos,
     }
 }
 
@@ -571,10 +985,17 @@ fn map_keystroke(ks: &Keystroke) -> Option<(KeyCode, KeyModifiers)> {
     }
 
     // Chrome shortcuts stay on AppShell actions; do not send them to the PTY.
-    if ks.modifiers.control && ks.modifiers.shift && ks.key == "p" {
+    if ks.modifiers.control && ks.modifiers.shift && matches!(ks.key.as_str(), "p" | "c" | "v" | "f")
+    {
         return None;
     }
     if ks.modifiers.control && matches!(ks.key.as_str(), "t" | "w" | "q" | "p") {
+        return None;
+    }
+    if ks.key == "insert"
+        && ((ks.modifiers.control && !ks.modifiers.shift)
+            || (ks.modifiers.shift && !ks.modifiers.control))
+    {
         return None;
     }
 
@@ -699,7 +1120,7 @@ impl IntoElement for TermScreen {
 
 impl Element for TermScreen {
     type RequestLayoutState = Style;
-    type PrepaintState = ();
+    type PrepaintState = Hitbox;
 
     fn id(&self) -> Option<ElementId> {
         Some("term-screen".into())
@@ -731,11 +1152,12 @@ impl Element for TermScreen {
         _request_layout: &mut Style,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::PrepaintState {
         let scale = window.scale_factor();
         self.term.update(cx, |term, cx| {
             term.apply_layout(bounds.size.width, bounds.size.height, scale, cx);
         });
+        window.insert_hitbox(bounds, HitboxBehavior::Normal)
     }
 
     fn paint(
@@ -744,16 +1166,66 @@ impl Element for TermScreen {
         _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         style: &mut Style,
-        _prepaint: &mut (),
+        hitbox: &mut Hitbox,
         window: &mut Window,
         cx: &mut App,
     ) {
+        window.set_cursor_style(CursorStyle::IBeam, hitbox);
         style.paint(bounds, window, cx, |window, cx| {
             let paint = self.term.update(cx, |term, _| term.try_glyph_paint());
             if let Some(paint) = paint {
                 crate::glyph_paint::paint_term(window, bounds, &paint);
             } else {
                 window.paint_quad(fill(bounds, rgb(0x0c0c0c)));
+            }
+        });
+
+        let entity = self.term.clone();
+        let hitbox = hitbox.clone();
+        window.on_mouse_event({
+            let entity = entity.clone();
+            let hitbox = hitbox.clone();
+            move |event: &MouseDownEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble || event.button != MouseButton::Left {
+                    return;
+                }
+                if !hitbox.is_hovered(window) {
+                    return;
+                }
+                entity.update(cx, |term, cx| {
+                    term.on_mouse_down(
+                        event.position,
+                        bounds,
+                        event.click_count,
+                        &event.modifiers,
+                    );
+                    cx.notify();
+                });
+                cx.stop_propagation();
+            }
+        });
+        window.on_mouse_event({
+            let entity = entity.clone();
+            move |event: &MouseMoveEvent, phase, _, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                entity.update(cx, |term, cx| {
+                    if term.on_mouse_drag(event.position, bounds, &event.modifiers) {
+                        cx.notify();
+                    }
+                });
+            }
+        });
+        window.on_mouse_event({
+            move |event: &MouseUpEvent, phase, _, cx| {
+                if phase != DispatchPhase::Bubble || event.button != MouseButton::Left {
+                    return;
+                }
+                entity.update(cx, |term, cx| {
+                    term.on_mouse_up(event.position, bounds, &event.modifiers);
+                    cx.notify();
+                });
             }
         });
     }

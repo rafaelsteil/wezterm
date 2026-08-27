@@ -53,8 +53,9 @@ Dual-stack is expected. POC shortcuts are allowed. Palette / charselect are **pa
 | Paint lag (017) | Done. **User-tried** 2026-08-26: “much better now.” Line sprites + mux coalesce + seqno skip. Still debug vs official release; not the wezterm-gui GPU atlas. |
 | gpui-fps HUD (019) | Wired, **off by default**. **Ctrl+Shift+F** shows it. Continuous while visible. Come back later to measure (and maybe add a non-continuous mode). Click HUD to compact. |
 | Lua config (020) | First slice: load `~/.wezterm.lua`. Font/size/scheme/scrollback/bell. Still forces `cmd.exe`. **User-ok** 2026-08-27 (“works like a charm”) after BGRA swap + coverage blit. |
+| Mouse selection + copy/paste (021) | **User-ok** 2026-08-27. Drag/copy/paste. Wrapped triple-click after `get_logical_lines` (“works”). |
 
-`go_nogo`: in-process embed = **no**. Continue POC = **yes**. Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. Paint = **line sprites user-ok (017) + 120dpi (016)**. FPS HUD = **wired, off by default (019)**. Lua config = **user-ok (020; Cascadia + Dracula)**. Glyph atlas Element = **not started**. Scrollback = **user-ok**. Palette = **parked**. ConPTY junk = **shared with wezterm-gui, polish later**.
+`go_nogo`: in-process embed = **no**. Continue POC = **yes**. Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. Paint = **line sprites user-ok (017) + 120dpi (016)**. FPS HUD = **wired, off by default (019)**. Lua config = **user-ok (020; Cascadia + Dracula)**. Selection/copy/paste = **user-ok (021, including wrap)**. Glyph atlas Element = **not started**. Scrollback = **user-ok**. Palette = **parked**. ConPTY junk = **shared with wezterm-gui, polish later**.
 
 Pins:
 
@@ -66,7 +67,7 @@ Pins:
 
 ## Next steps (pick with the user unless they already said)
 
-Default `wezterm gpui` hosts **cmd.exe** through mux. Paint is **one cached GPUI image per line** (wezterm-font composite, 017) at window DPI — **user-ok** (“much better”). Live drag rewraps display only; ~450ms later one ConPTY `resize`. Loads **`~/.wezterm.lua`** for font/size/scheme/scrollback/bell (020) — **user-ok** (“works like a charm”). **Main goal still rendering** vs wezterm-gui (looks, not chrome).
+Default `wezterm gpui` hosts **cmd.exe** through mux. Paint is **one cached GPUI image per line** (wezterm-font composite, 017) at window DPI — **user-ok** (“much better”). Live drag rewraps display only; ~450ms later one ConPTY `resize`. Loads **`~/.wezterm.lua`** for font/size/scheme/scrollback/bell (020) — **user-ok** (“works like a charm”). Mouse **selection + copy/paste** (021) **user-ok** including wrapped triple-click. User will report more bugs next session. **Main goal still rendering** vs wezterm-gui (looks, not chrome).
 
 Do **not** start a `window/` cutover unless the user explicitly asks.
 Do **not** start character selector / palette keyboard — user parked those.
@@ -74,16 +75,16 @@ Do **not** investigate ConPTY vertical junk in this POC — also happens in offi
 Do **not** start a GPUI `text_system` rewrite unless paint feels slow again.
 Do **not** expand lua to tab-bar / decorations / mouse bindings / live reload unless asked.
 
-Workstream: `docs/reference/rendering-quality.md`. Lua: `docs/plans/020-lua-config-first-slice.md`.
+Workstream: `docs/reference/rendering-quality.md`. Lua: `docs/plans/020-lua-config-first-slice.md`. Selection: `docs/plans/021-mouse-selection-copy-paste.md`.
 
 Reasonable continuations, smallest first:
 
-1. Visual leftovers vs wezterm-gui: geometry box-draw, per-cell clip, selection/mouse if those get in the way.
+1. Wait for the user’s next bug list. Until then: visual leftovers vs wezterm-gui (geometry box-draw, per-cell clip).
 2. Come back later: FPS HUD (Ctrl+Shift+F). Continuous = sustain rate; for typing lag we still want a non-continuous FRAME mode (not wired).
 3. GPUI `text_system` spike only if they ask for more speed (`docs/reference/gpui-text-vs-sprites.md`).
 4. **Only if asked:** windowing cutover.
 
-If the user just says “continue”: pick (1) from whatever still looks wrong. Do not start (4). Do not paste Zed `terminal_element.rs` (GPL-3). Do not resume palette/charselect.
+If the user just says “continue”: wait for their bugs; do not invent a new slice. Do not start (4). Do not paste Zed `terminal_element.rs` (GPL-3). Do not resume palette/charselect.
 
 ---
 
@@ -120,14 +121,15 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
   src/palette.rs                 # Input + filtered hardcoded commands (overlay card)
   src/confirm.rs                 # AlertDialog confirm + Dialog+Input line prompt
   src/mux_host.rs                # config + Mux + LocalDomain; load lua; spawn cmd.exe
-  src/term_pane.rs               # mux LocalPane; wezterm-font paint or Consolas fallback
-  src/glyph_paint.rs             # wezterm-font → cached per-line RenderImages (017)
+  src/term_pane.rs               # mux LocalPane; wezterm-font paint or Consolas fallback; GUI selection (021)
+  src/glyph_paint.rs             # wezterm-font → cached per-line RenderImages (017); selection tint
   docs/
     HANDOFF.md                   # this file
     STATE.json                   # live phase/next/pins/findings (machine)
     help/resume.md               # short command/constraint cheat sheet
     plans/000-feasibility-spike.md
     plans/020-lua-config-first-slice.md
+    plans/021-mouse-selection-copy-paste.md
     adr/0001-use-zed-official-gpui.md
     adr/0002-isolated-cargo-workspace.md
     adr/0003-gpui-owns-freetype.md
@@ -210,6 +212,7 @@ Docs index:
 - `docs/help/resume.md` — short commands
 - `docs/plans/000-feasibility-spike.md` — original feasibility plan (blast radius, effort)
 - `docs/plans/020-lua-config-first-slice.md` — load wezterm.lua (font/size/scheme/scrollback/bell)
+- `docs/plans/021-mouse-selection-copy-paste.md` — drag-select + clipboard
 - `docs/adr/` — accepted decisions (0003 = GPUI-owned FreeType)
-- `docs/decisions/` — 016 paint quality; 017 line sprites; 018 ConPTY junk later; 019 gpui-fps HUD; 020 lua config first slice
+- `docs/decisions/` — 016 paint quality; 017 line sprites; 018 ConPTY junk later; 019 gpui-fps HUD; 020 lua config first slice; 021 mouse selection + copy/paste
 - `docs/reference/` — rendering-quality (current), gpui-terminal / tty7, steal-list, open-questions, scrollback

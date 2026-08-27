@@ -39,6 +39,9 @@ struct CachedGlyph {
 struct RowKey {
     hash: [u8; 16],
     cursor_col: u16,
+    /// Exclusive column range. `u16::MAX` start means no selection on this row.
+    sel_start: u16,
+    sel_end: u16,
     cols: u16,
     cell_w: u16,
     cell_h: u16,
@@ -143,12 +146,14 @@ impl GlyphPainter {
         })
     }
 
+    /// `sel_cols` is per visible row: exclusive column range, or `(u16::MAX, u16::MAX)` if none.
     pub fn layout(
         &mut self,
         lines: &[Line],
         cursor: Option<(usize, usize)>,
         pal: &ColorPalette,
         cols: usize,
+        sel_cols: &[(u16, u16)],
     ) -> anyhow::Result<TermPaint> {
         let font = self.fonts.default_font()?;
         let metrics = font.metrics();
@@ -173,12 +178,16 @@ impl GlyphPainter {
                 Some((r, c)) if r == row => c.min(u16::MAX as usize - 1) as u16,
                 _ => u16::MAX,
             };
-            if cursor_col == u16::MAX && line_is_blank(line, pal, pane_bg) {
+            let (sel_start, sel_end) = sel_cols.get(row).copied().unwrap_or((u16::MAX, u16::MAX));
+            if cursor_col == u16::MAX && sel_start == u16::MAX && line_is_blank(line, pal, pane_bg)
+            {
                 continue;
             }
             let key = RowKey {
                 hash: line.compute_shape_hash(),
                 cursor_col,
+                sel_start,
+                sel_end,
                 cols: cols as u16,
                 cell_w: key_cell_w,
                 cell_h: key_cell_h,
@@ -190,6 +199,8 @@ impl GlyphPainter {
                         &font,
                         line,
                         cursor.filter(|(r, _)| *r == row).map(|(_, c)| c),
+                        sel_start,
+                        sel_end,
                         pal,
                         pane_bg,
                         cols,
@@ -257,6 +268,8 @@ impl GlyphPainter {
         font: &LoadedFont,
         line: &Line,
         cursor_col: Option<usize>,
+        sel_start: u16,
+        sel_end: u16,
         pal: &ColorPalette,
         pane_bg: u32,
         cols: usize,
@@ -282,6 +295,16 @@ impl GlyphPainter {
             255,
         );
 
+        let sel_start_u = sel_start as usize;
+        let sel_end_u = (sel_end as usize).min(cols);
+        let has_sel = sel_start != u16::MAX && sel_end_u > sel_start_u;
+        if has_sel {
+            let (sr, sg, sb, _) = pal.selection_bg.as_rgba_u8();
+            let x = (sel_start_u as f64 * cell_w).round() as i32;
+            let w = ((sel_end_u - sel_start_u) as f64 * cell_w).round().max(1.0) as u32;
+            fill_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, sr, sg, sb, 255);
+        }
+
         for cell in line.visible_cells() {
             let col = cell.cell_index();
             if col >= cols {
@@ -289,16 +312,20 @@ impl GlyphPainter {
             }
             let attrs = cell.attrs();
             let is_cursor = cursor_col == Some(col);
+            let selected = has_sel && col >= sel_start_u && col < sel_end_u;
             let mut bgc = pal.resolve_bg(attrs.background());
             if attrs.reverse() {
                 bgc = pal.resolve_fg(attrs.foreground());
+            }
+            if selected {
+                bgc = pal.selection_bg;
             }
             if is_cursor {
                 bgc = pal.cursor_bg;
             }
             let (r, g, b, _) = bgc.as_rgba_u8();
             let color = pack_rgb(r, g, b);
-            if color == pane_bg && !is_cursor {
+            if color == pane_bg && !is_cursor && !selected {
                 continue;
             }
             let x = (col as f64 * cell_w).round() as i32;
@@ -322,9 +349,16 @@ impl GlyphPainter {
                             .map(|c| c.attrs().clone())
                             .unwrap_or_default();
                         let is_cursor = cursor_col == Some(col);
+                        let selected = has_sel && col >= sel_start_u && col < sel_end_u;
                         let mut fg = pal.resolve_fg(attrs.foreground());
                         if attrs.reverse() {
                             fg = pal.resolve_bg(attrs.background());
+                        }
+                        if selected {
+                            let (_, _, _, a) = pal.selection_fg.as_rgba_u8();
+                            if a > 0 {
+                                fg = pal.selection_fg;
+                            }
                         }
                         if is_cursor {
                             fg = pal.cursor_fg;

@@ -26,6 +26,8 @@ actions!(
         CloseTab,
         QuitPoc,
         ToggleFps,
+        CopySelection,
+        PasteClipboard,
     ]
 );
 
@@ -40,6 +42,10 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-w", CloseTab, None),
         KeyBinding::new("ctrl-q", QuitPoc, None),
         KeyBinding::new("ctrl-shift-f", ToggleFps, None),
+        KeyBinding::new("ctrl-shift-c", CopySelection, Some(APP_CONTEXT)),
+        KeyBinding::new("ctrl-shift-v", PasteClipboard, Some(APP_CONTEXT)),
+        KeyBinding::new("ctrl-insert", CopySelection, Some(APP_CONTEXT)),
+        KeyBinding::new("shift-insert", PasteClipboard, Some(APP_CONTEXT)),
         KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
         KeyBinding::new("up", PaletteMoveUp, Some(PALETTE_CONTEXT)),
         KeyBinding::new("down", PaletteMoveDown, Some(PALETTE_CONTEXT)),
@@ -122,6 +128,12 @@ impl AppShell {
                         cx.notify();
                     });
                 }
+            }
+            "Copy to clipboard" => {
+                self.copy_selection(window, cx, true);
+            }
+            "Paste from clipboard" => {
+                self.paste_clipboard(window, cx, true);
             }
             "Activate Command Palette" => self.palette_open = true,
             "Rename tab" | "Prompt the user for a line of text" => {
@@ -317,13 +329,61 @@ impl AppShell {
         cx.notify();
     }
 
+    fn copy_selection(&mut self, window: &mut Window, cx: &mut Context<Self>, notify: bool) {
+        let copied = self
+            .tabs
+            .get(self.active)
+            .map(|tab| tab.term.update(cx, |term, cx| term.copy_selection(cx)))
+            .unwrap_or(false);
+        if notify {
+            if copied {
+                window.push_notification(Notification::info("Copied to clipboard"), cx);
+            } else {
+                window.push_notification(Notification::info("Nothing selected"), cx);
+            }
+        }
+    }
+
+    fn paste_clipboard(&mut self, window: &mut Window, cx: &mut Context<Self>, notify: bool) {
+        let pasted = self
+            .tabs
+            .get(self.active)
+            .map(|tab| {
+                tab.term.update(cx, |term, cx| {
+                    let ok = term.paste_clipboard(cx);
+                    if ok {
+                        cx.notify();
+                    }
+                    ok
+                })
+            })
+            .unwrap_or(false);
+        if notify && !pasted {
+            window.push_notification(Notification::info("Clipboard is empty"), cx);
+        }
+    }
+
+    fn on_copy(&mut self, _: &CopySelection, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open || window.has_active_dialog(cx) {
+            return;
+        }
+        self.copy_selection(window, cx, false);
+    }
+
+    fn on_paste(&mut self, _: &PasteClipboard, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open || window.has_active_dialog(cx) {
+            return;
+        }
+        self.paste_clipboard(window, cx, false);
+    }
+
     fn on_term_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette_open || window.has_active_dialog(cx) {
             return;
         }
         if let Some(tab) = self.tabs.get(self.active) {
             tab.term.update(cx, |term, cx| {
-                if term.key_down(event) {
+                if term.key_down(event, cx) {
                     cx.stop_propagation();
                     cx.notify();
                 }
@@ -371,6 +431,8 @@ impl Render for AppShell {
             .on_action(cx.listener(Self::on_close_tab))
             .on_action(cx.listener(Self::on_quit))
             .on_action(cx.listener(Self::toggle_fps))
+            .on_action(cx.listener(Self::on_copy))
+            .on_action(cx.listener(Self::on_paste))
             .on_key_down(cx.listener(Self::on_term_key))
             .relative()
             .size_full()
@@ -445,7 +507,7 @@ impl Render for AppShell {
                     .border_color(cx.theme().border)
                     .child(
                         Label::new(format!(
-                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+F fps  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain cmd.exe",
+                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F fps  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain cmd.exe",
                             crate::mux_host::config_status(),
                             status_title,
                             status_line

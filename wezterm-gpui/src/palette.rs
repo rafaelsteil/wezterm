@@ -101,7 +101,9 @@ impl CommandPalette {
 
     fn run(&mut self, brief: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.last_ran = Some(brief.to_string());
-        window.push_notification(Notification::info(format!("POC: would run `{brief}`")), cx);
+        if !matches!(brief, "Copy to clipboard" | "Paste from clipboard") {
+            window.push_notification(Notification::info(format!("POC: would run `{brief}`")), cx);
+        }
         println!("wezterm-gpui palette: {brief}");
         cx.emit(PaletteEvent::Executed(brief.to_string()));
         cx.notify();

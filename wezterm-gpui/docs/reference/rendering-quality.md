@@ -12,6 +12,8 @@ Decisions: [016](../decisions/016-term-render-quality.json), [017](../decisions/
 
 **020 (2026-08-27):** Lua font/scheme **user-ok** (“works like a charm”). Brown pane was RGBA vs GPUI BGRA; thin Cascadia was `fg × alpha²`. Coverage blit matches wezterm-gui well enough.
 
+**021 (2026-08-27):** Selection/copy/paste **user-ok**. Wrapped triple-click first missed continuation (physical row); `get_logical_lines` then **user-ok** (“works”).
+
 Fairness note: this POC is a **debug** `wezterm-gpui.exe`. Official wezterm-gui is **release**.
 
 ## Done
@@ -26,10 +28,11 @@ Fairness note: this POC is a **debug** `wezterm-gpui.exe`. Official wezterm-gui 
 | Skip layout when pane seqno/viewport/cursor unchanged | **User-ok** (017) |
 | gpui-fps HUD | Wired (019), **off by default**. Ctrl+Shift+F. Come back later. |
 | Lua `font` / `color_scheme` | **User-ok** (020; BGRA + coverage blit) |
+| Mouse selection + copy/paste | **User-ok** (021), including wrapped triple-click |
 
 ## Still wrong / next (smallest first)
 
-1. Visual leftovers vs wezterm-gui: geometry box-draw, per-cell clip, selection/mouse if those get in the way.
+1. User will report more bugs next session. Until then: visual leftovers vs wezterm-gui (geometry box-draw, per-cell clip).
 2. GPUI `text_system` spike only if paint feels slow again — [gpui-text-vs-sprites.md](gpui-text-vs-sprites.md). Do not go back to per-glyph `paint_image`.
 3. **Come back later: measure with gpui-fps** (Ctrl+Shift+F). Stock HUD is *continuous* (how fast we can paint; window never idles). For typing/`dir` lag, watch **FRAME** with continuous *off* — that toggle is **not wired yet**. Hide HUD to idle.
 4. ConPTY vertical junk: **later**, with wezterm-gui (018).
