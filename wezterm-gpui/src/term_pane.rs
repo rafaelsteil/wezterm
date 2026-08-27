@@ -10,9 +10,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui::*;
 use gpui_component::StyledExt;
-use mux::pane::{Pane, PaneId};
+use config::keyassignment::{KeyAssignment, MouseEventTrigger};
+use config::MouseEventAltScreen;
+use mux::pane::{Pane, PaneId, WithPaneLines};
 use mux::renderable::RenderableDimensions;
 use mux::{Mux, MuxNotification};
+use wezterm_input_types::Modifiers as InputModifiers;
 use wezterm_term::color::ColorPalette;
 use wezterm_term::input::{
     MouseButton as TermMouseButton, MouseEvent as TermMouseEvent, MouseEventKind,
@@ -230,6 +233,24 @@ impl TermPane {
             });
             return;
         }
+        let trigger = MouseEventTrigger::Down {
+            streak: 1,
+            button: if y > 0 {
+                TermMouseButton::WheelUp(1)
+            } else {
+                TermMouseButton::WheelDown(1)
+            },
+        };
+        if let Some(action) = lookup_lua_mouse(trigger, &event.modifiers) {
+            match action {
+                KeyAssignment::ScrollByPage(n) => {
+                    self.scroll_by_page(*n);
+                    return;
+                }
+                KeyAssignment::Nop => return,
+                _ => {}
+            }
+        }
         // GPUI Windows: positive y is wheel away from user (see older history).
         self.scroll_by_line(-y);
     }
@@ -318,6 +339,20 @@ impl TermPane {
             self.send_pty_mouse(MouseEventKind::Press, TermMouseButton::Left, hit, modifiers);
             return;
         }
+        let trigger = MouseEventTrigger::Down {
+            streak: click_count.max(1),
+            button: TermMouseButton::Left,
+        };
+        if let Some(action) = lookup_lua_mouse(trigger, modifiers) {
+            match action {
+                KeyAssignment::Nop => return,
+                KeyAssignment::OpenLinkAtMouseCursor => {
+                    self.open_link_at(hit);
+                    return;
+                }
+                _ => {}
+            }
+        }
         self.selection.dragging = true;
         self.selection.origin = Some(hit.pos);
         self.selection.mode = match click_count {
@@ -398,6 +433,19 @@ impl TermPane {
                     hit,
                     modifiers,
                 );
+            }
+            return;
+        }
+        if lookup_lua_mouse(
+            MouseEventTrigger::Up {
+                streak: 1,
+                button: TermMouseButton::Left,
+            },
+            modifiers,
+        ) == Some(KeyAssignment::OpenLinkAtMouseCursor)
+        {
+            if let Some(hit) = self.hit_cell(pos, bounds, true) {
+                self.open_link_at(hit);
             }
         }
     }
@@ -566,6 +614,26 @@ impl TermPane {
             .unwrap_or(dims.physical_top)
             .saturating_add(amount);
         self.set_viewport(Some(position), &dims);
+    }
+
+    fn scroll_by_page(&mut self, amount: f64) {
+        self.paint_cache = None;
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let dims = live.pane.get_dimensions();
+        let position = self.viewport.unwrap_or(dims.physical_top) as f64
+            + (amount * dims.viewport_rows as f64);
+        self.set_viewport(Some(position as isize), &dims);
+    }
+
+    fn open_link_at(&self, hit: CellHit) {
+        let Ok(live) = &self.live else {
+            return;
+        };
+        if let Some(uri) = hyperlink_at(&*live.pane, hit.pos) {
+            wezterm_open_url::open_url(&uri);
+        }
     }
 
     fn set_viewport(&mut self, position: Option<StableRowIndex>, dims: &RenderableDimensions) {
@@ -1032,6 +1100,75 @@ fn gpui_mods(m: &Modifiers) -> KeyModifiers {
         mods |= KeyModifiers::SUPER;
     }
     mods
+}
+
+fn gpui_to_input_mods(m: &Modifiers) -> InputModifiers {
+    let mut mods = InputModifiers::NONE;
+    if m.control {
+        mods |= InputModifiers::CTRL;
+    }
+    if m.alt {
+        mods |= InputModifiers::ALT;
+    }
+    if m.shift {
+        mods |= InputModifiers::SHIFT;
+    }
+    if m.platform {
+        mods |= InputModifiers::SUPER;
+    }
+    mods.remove_positional_mods()
+}
+
+/// User `mouse_bindings` only (not wezterm-gui default InputMap). 021 selection stays hardcoded.
+fn lookup_lua_mouse(trigger: MouseEventTrigger, gpui_mods: &Modifiers) -> Option<KeyAssignment> {
+    let want = gpui_to_input_mods(gpui_mods);
+    config::configuration()
+        .mouse_bindings()
+        .into_iter()
+        .find_map(|((ev, mods), action)| {
+            if ev != trigger {
+                return None;
+            }
+            if mods.mods.remove_positional_mods() != want {
+                return None;
+            }
+            if mods.mouse_reporting {
+                return None;
+            }
+            match mods.alt_screen {
+                MouseEventAltScreen::Any | MouseEventAltScreen::False => Some(action),
+                MouseEventAltScreen::True => None,
+            }
+        })
+}
+
+fn hyperlink_at(pane: &dyn Pane, pos: CellPos) -> Option<String> {
+    let rules = &config::configuration().hyperlink_rules;
+    pane.apply_hyperlinks(pos.y..pos.y + 1, rules);
+    struct FindLink {
+        uri: Option<String>,
+        row: StableRowIndex,
+        col: usize,
+    }
+    impl WithPaneLines for FindLink {
+        fn with_lines_mut(&mut self, first_row: StableRowIndex, lines: &mut [&mut Line]) {
+            if first_row != self.row {
+                return;
+            }
+            if let Some(line) = lines.first() {
+                if let Some(cell) = line.get_cell(self.col) {
+                    self.uri = cell.attrs().hyperlink().map(|h| h.uri().to_string());
+                }
+            }
+        }
+    }
+    let mut find = FindLink {
+        uri: None,
+        row: pos.y,
+        col: pos.x,
+    };
+    pane.with_lines_mut(pos.y..pos.y + 1, &mut find);
+    find.uri
 }
 
 fn dpi_from_scale(scale: f32) -> u32 {

@@ -11,6 +11,7 @@ mod boxdraw;
 mod confirm;
 mod glyph_paint;
 mod hello;
+mod lua_ui;
 mod mux_host;
 mod palette;
 pub mod shell;

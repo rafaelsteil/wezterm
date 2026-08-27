@@ -65,8 +65,9 @@ Dual-stack is expected. POC shortcuts are allowed. Palette / charselect are **pa
 | Cursor missing until backspace (031) | **Backlog.** Block cursor hidden on launch/new tab; typing no; backspace yes; space hides. Do not start unless asked. |
 | Tab close / `exit` kills typing (032) | **Better now.** Close tab on pane death; restore AppShell focus. |
 | Last tab `exit` quits (033) | **User-ok** 2026-08-27 (“works great”). Last-tab process exit calls `cx.quit()`. |
+| Lua config second slice (034) | **User-ok** 2026-08-27 (tab chrome + Ctrl+click open + Ctrl+wheel). **Partial:** no hyperlink hover highlight (backlog). Fancy tab bar / decorations: no visible change. `adjust_window_size` not tested. Matrix: `docs/lua-config.json`. |
 
-`go_nogo`: in-process embed = **no**. Continue POC = **yes**. Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. Paint = **line sprites user-ok (017)**; **025 4K 120dpi user-ok**. FPS HUD = **wired, off by default (019)**. Lua config = **user-ok (020; Cascadia + Dracula)**. Selection/copy/paste = **user-ok (021, including wrap)**. 022 click/focus = **user-ok**. 023 box-draw = **user-ok** (tight clip reverted). 026 monitor-move hang = **backlog**. **027 shell menu = user-ok.** **028 icons = user-ok.** **029 cursor gap = not user-ok.** **030 integer cell grid = user-ok.** **031 cursor until backspace = backlog.** **032 tab close/exit keys = better now.** **033 last-tab `exit` quits = user-ok.** Glyph atlas Element = **not started**. Scrollback = **user-ok**. Palette = **parked**. ConPTY junk = **shared with wezterm-gui, polish later**.
+`go_nogo`: in-process embed = **no**. Continue POC = **yes**. Runtime window = **yes**. CLI spawn = **yes**. Min usable chrome = **yes**. Mux cmd.exe = **user-tried**. Paint = **line sprites user-ok (017)**; **025 4K 120dpi user-ok**. FPS HUD = **wired, off by default (019)**. Lua config = **user-ok (020; Cascadia + Dracula)**; **034 user-ok** except hover highlight. Selection/copy/paste = **user-ok (021, including wrap)**. 022 click/focus = **user-ok**. 023 box-draw = **user-ok** (tight clip reverted). 026 monitor-move hang = **backlog**. **027 shell menu = user-ok.** **028 icons = user-ok.** **029 cursor gap = not user-ok.** **030 integer cell grid = user-ok.** **031 cursor until backspace = backlog.** **032 tab close/exit keys = better now.** **033 last-tab `exit` quits = user-ok.** Glyph atlas Element = **not started**. Scrollback = **user-ok**. Palette = **parked**. ConPTY junk = **shared with wezterm-gui, polish later**.
 
 Pins:
 
@@ -78,7 +79,7 @@ Pins:
 
 ## Next steps (pick with the user unless they already said)
 
-Default `wezterm gpui` hosts **cmd.exe** through mux (Plus / Ctrl+T). Chevron next to Plus lists Command Prompt, Windows PowerShell, and `pwsh` if installed (027) — **user-ok**. Icons need `gpui-component-assets` (028) — **user-ok**. Paint is **one cached GPUI image per line** (wezterm-font composite, 017) at window DPI — **user-ok** (“much better”). Live drag rewraps display only; ~450ms later one ConPTY `resize`. Loads **`~/.wezterm.lua`** for font/size/scheme/scrollback/bell (020) — **user-ok** (“works like a charm”). Mouse **selection + copy/paste** (021) **user-ok** including wrapped triple-click. **023 user-ok:** box-draw (`echo` / `tree`); tight cell clip **reverted (025)**. **025 user-ok:** 4K 120dpi glyphs. **029 not user-ok** (`cell_span`). **030 user-ok:** integer cell grid (“works great now”). **026 backlog:** 2–3s hang when moving the window between monitors. **031 backlog:** block cursor missing until backspace (launch/new tab; space hides). **032:** tab X / `exit` left typing dead — **better now**. **033 user-ok:** last-tab `exit` quits the app (“works great”). **Do not start** 026/031 unless asked. **Main goal still rendering** vs wezterm-gui (looks, not chrome).
+Default `wezterm gpui` hosts **cmd.exe** through mux (Plus / Ctrl+T). Chevron next to Plus lists Command Prompt, Windows PowerShell, and `pwsh` if installed (027) — **user-ok**. Icons need `gpui-component-assets` (028) — **user-ok**. Paint is **one cached GPUI image per line** (wezterm-font composite, 017) at window DPI — **user-ok** (“much better”). Live drag rewraps display only; ~450ms later one ConPTY `resize`. Loads **`~/.wezterm.lua`** for font/size/scheme/scrollback/bell (020) — **user-ok** (“works like a charm”). **034** tab chrome + that file’s `mouse_bindings` — **user-ok** except no hyperlink hover highlight (backlog). Per-key matrix: **`docs/lua-config.json`**. Mouse **selection + copy/paste** (021) **user-ok** including wrapped triple-click. **023 user-ok:** box-draw (`echo` / `tree`); tight cell clip **reverted (025)**. **025 user-ok:** 4K 120dpi glyphs. **029 not user-ok** (`cell_span`). **030 user-ok:** integer cell grid (“works great now”). **026 backlog:** 2–3s hang when moving the window between monitors. **031 backlog:** block cursor missing until backspace (launch/new tab; space hides). **032:** tab X / `exit` left typing dead — **better now**. **033 user-ok:** last-tab `exit` quits the app (“works great”). **Do not start** 026/031 unless asked. **Main goal still rendering** vs wezterm-gui (looks, not chrome).
 
 Do **not** start a `window/` cutover unless the user explicitly asks.
 Do **not** start character selector / palette keyboard — user parked those.
@@ -86,20 +87,20 @@ Do **not** investigate ConPTY vertical junk in this POC — also happens in offi
 Do **not** investigate the monitor-move hang (026) unless asked.
 Do **not** investigate the missing cursor until backspace (031) unless asked.
 Do **not** start a GPUI `text_system` rewrite unless paint feels slow again.
-Do **not** expand lua to tab-bar / decorations / mouse bindings / live reload / `default_prog` / `launch_menu` unless asked.
+Do **not** expand lua to `enable_scroll_bar` / `max_fps` / palette fonts / live reload / `default_prog` / `launch_menu` / hyperlink hover highlight unless asked.
 
-Workstream: `docs/reference/rendering-quality.md`. Lua: `docs/plans/020-lua-config-first-slice.md`. Selection: `docs/plans/021-mouse-selection-copy-paste.md`. Box-draw: `docs/plans/023-boxdraw-and-cell-clip.md`. 4K dest: `docs/plans/024-hi-dpi-line-sprite-dest.md`. 120dpi clip/dest: `docs/plans/025-120dpi-glyph-clip-and-dest-1to1.md`. Monitor-move hang (parked): `docs/plans/026-monitor-move-dpi-reshape-hang.md`. New-tab menu: `docs/plans/027-new-tab-shell-menu.md`. Icons: `docs/plans/028-gpui-component-icon-assets.md`. Cursor gap (insufficient): `docs/plans/029-120dpi-cursor-cell-span.md`. Integer cell grid: `docs/plans/030-integer-cell-grid.md`. Cursor until backspace (parked): `docs/plans/031-cursor-block-until-backspace.md`. Tab close/exit keys: `docs/plans/032-tab-close-exit-keys.md`. Last tab `exit` quits: `docs/plans/033-last-tab-exit-quits.md`.
+Workstream: `docs/reference/rendering-quality.md`. Lua matrix: `docs/lua-config.json` + `docs/reference/lua-config.md`. Lua slices: `docs/plans/020-lua-config-first-slice.md` + `docs/plans/034-lua-config-second-slice.md`. Selection: `docs/plans/021-mouse-selection-copy-paste.md`. Box-draw: `docs/plans/023-boxdraw-and-cell-clip.md`. 4K dest: `docs/plans/024-hi-dpi-line-sprite-dest.md`. 120dpi clip/dest: `docs/plans/025-120dpi-glyph-clip-and-dest-1to1.md`. Monitor-move hang (parked): `docs/plans/026-monitor-move-dpi-reshape-hang.md`. New-tab menu: `docs/plans/027-new-tab-shell-menu.md`. Icons: `docs/plans/028-gpui-component-icon-assets.md`. Cursor gap (insufficient): `docs/plans/029-120dpi-cursor-cell-span.md`. Integer cell grid: `docs/plans/030-integer-cell-grid.md`. Cursor until backspace (parked): `docs/plans/031-cursor-block-until-backspace.md`. Tab close/exit keys: `docs/plans/032-tab-close-exit-keys.md`. Last tab `exit` quits: `docs/plans/033-last-tab-exit-quits.md`.
 
 Reasonable continuations, smallest first:
 
-1. Wait for the next bug list. Powerline triangles only if nerd-font prompts look wrong.
+1. Wait for the next bug list. Powerline triangles only if nerd-font prompts look wrong. Lua leftovers live in `docs/lua-config.json` — do not invent a key unless asked.
 2. Come back later: FPS HUD (Ctrl+Shift+F). Continuous = sustain rate; for typing lag we still want a non-continuous FRAME mode (not wired).
 3. Come back later: monitor-move hang (026) — 2–3s when dragging between 96dpi and 120dpi monitors.
 4. Come back later: cursor missing until backspace (031) — launch/new tab; space hides it.
 5. GPUI `text_system` spike only if they ask for more speed (`docs/reference/gpui-text-vs-sprites.md`).
 6. **Only if asked:** windowing cutover.
 
-If the user just says “continue”: wait for the next bugs; do not invent a new slice; do **not** start 026 or 031. Do not start (6). Do not paste Zed `terminal_element.rs` (GPL-3). Do not resume palette/charselect.
+If the user just says “continue”: wait for bugs; do not invent a new slice; do **not** start 026, 031, or hyperlink hover. Do not start (6). Do not paste Zed `terminal_element.rs` (GPL-3). Do not resume palette/charselect.
 
 ---
 
@@ -136,6 +137,7 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
   src/palette.rs                 # Input + filtered hardcoded commands (overlay card)
   src/confirm.rs                 # AlertDialog confirm + Dialog+Input line prompt
   src/mux_host.rs                # config + Mux + LocalDomain; load lua; spawn CommandBuilder
+  src/lua_ui.rs                  # tab title / last-active helpers (034)
   src/shells.rs                  # cmd / Windows PowerShell / optional pwsh profiles (027)
   src/term_pane.rs               # mux LocalPane; wezterm-font paint or Consolas fallback; GUI selection (021)
   src/glyph_paint.rs             # wezterm-font → cached per-line RenderImages (017); selection tint; 025 dest 1:1; 029 cell_span; 030 integer grid
@@ -143,6 +145,7 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
   docs/
     HANDOFF.md                   # this file
     STATE.json                   # live phase/next/pins/findings (machine)
+    lua-config.json              # per-key lua honor + stats (035)
     help/resume.md               # short command/constraint cheat sheet
     plans/000-feasibility-spike.md
     plans/020-lua-config-first-slice.md
@@ -158,6 +161,7 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
     plans/031-cursor-block-until-backspace.md
     plans/032-tab-close-exit-keys.md
     plans/033-last-tab-exit-quits.md
+    plans/034-lua-config-second-slice.md
     adr/0001-use-zed-official-gpui.md
     adr/0002-isolated-cargo-workspace.md
     adr/0003-gpui-owns-freetype.md
@@ -166,6 +170,7 @@ wezterm-gpui/                    # OWN Cargo workspace (excluded from root)
     reference/rendering-quality.md  # current main goal (decision 016)
     reference/open-questions.md  # live PTY resize + GPUI text: re-eval later
     reference/scrollback.md      # viewport slice (decision 015; user-ok)
+    reference/lua-config.md      # human index for lua-config.json
 
 deps/freetype-from-sys/          # WezTerm FT bindgen; no links=; GPUI owns C lib
 
@@ -220,7 +225,7 @@ Binary lookup for `wezterm gpui`: env `WEZTERM_GPUI`, then next to `wezterm.exe`
 10. **Do not call `LocalPane::resize` (ConPTY) on live GPUI drag.** A few pixels of width is one column; `ResizePseudoConsole` smears the cursor column. wezterm-gui mostly avoids this via Win32 cell-sized resize increments. POC: first valid pane size still resizes the PTY; later **drag** is `Pane::resize_display` (decision 013). After the view grid is unchanged ~450ms, **one** committed ConPTY `resize` (decision 016) so new output can wrap at the new width. Skip sub-2-cell bounds (decision 012). Status shows `pty` vs `view` vs `dpi`.
 11. **External GPUI terminals** — `D:\dev\gpui-terminal` and `D:\dev\tty7`. Notes: `docs/reference/` (including open-questions, GPUI-text vs sprites, scrollback). Do not path-dep, do not switch to `alacritty_terminal`. Zed `terminal_element.rs` is GPL-3: ideas only.
 12. **Adding a gpui-component git crate re-resolves unpinned Zed.** `gpui-fps` at the same `rev` as `gpui-component` is fine, but `cargo check` walked Zed to a newer SHA. Pin back with `cargo update -p gpui --precise fecc3273ed32643c2ea1b04a74c8780e2c9ffaf8` (the `STATE.json` `pins.gpui_rev`). Do not put `rev` on the `gpui` dep (pitfall 2).
-13. **Lua config (020).** `common_init` used to skip `wezterm.lua` so `default_prog` could not replace cmd.exe. Now the file loads; Plus / Ctrl+T still spawn Command Prompt. Chevron can spawn PowerShell (027). On Windows, `wezterm.lua` next to the exe still wins over `~/.wezterm.lua`. Unknown lua fields reject the whole file (same as wezterm-gui) → defaults. Live reload / `wezterm.on` / chrome keys / `launch_menu` are not this slice.
+13. **Lua config (020 + 034).** `common_init` used to skip `wezterm.lua` so `default_prog` could not replace cmd.exe. Now the file loads; Plus / Ctrl+T still spawn Command Prompt. Chevron can spawn PowerShell (027). On Windows, `wezterm.lua` next to the exe still wins over `~/.wezterm.lua`. Unknown lua fields reject the whole file (same as wezterm-gui) → defaults. 034 honors tab chrome + **user** `mouse_bindings` only (`OpenLinkAtMouseCursor`, `Nop`, `ScrollByPage`) — not wezterm-gui’s default InputMap. Ctrl+click **opens** but has **no hover underline** (backlog; do not start unless asked). Per-key status: `docs/lua-config.json`. Live reload / `wezterm.on` / `launch_menu` / scrollbar / `max_fps` / palette fonts stay out until asked. Open URL uses `wezterm-open-url` on a side thread (no `open-uri` event).
 14. **GPUI `RenderImage` is BGRA.** Line sprites must swap R/B before `Frame::new`. RGBA upload made Dracula `#282a36` look brown (`#362a28`). `gpui::rgb(0xRRGGBB)` for quads is already correct.
 15. **Do not premultiply glyph coverage then multiply alpha again.** That is `fg * alpha²` and Cascadia looks thin vs wezterm-gui. Cache FreeType coverage; blit `sRGB_fg * linear_a + bg * (1-a)` like the glyph shader.
 16. **TermScreen left-click `stop_propagation` vs AppShell `track_focus`.** Swallowing the press before the shell focuses means typing stays dead until a right-click (unhandled, bubbles). Focus AppShell from the pane press (and at window open). Cell selection: a MouseMove on the press with start==end paints a 1-col box; keep range None until the hit cell leaves origin (wezterm-gui).
@@ -240,15 +245,16 @@ Binary lookup for `wezterm gpui`: env `WEZTERM_GPUI`, then next to `wezterm.exe`
 
 ## Session protocol
 
-1. Read this file, then `wezterm-gpui/docs/STATE.json`.
-2. Treat `STATE.json` `current_phase`, `next`, `blockers`, `pins` as live (this HANDOFF can lag; if they disagree, **STATE wins**, then update this file if the story changed).
-3. After material work: update `STATE.json`; append `docs/adr/` or `docs/decisions/`; if the narrative of “where we are / what’s next” changed, update **this HANDOFF.md** so the next fresh session stays accurate.
-4. Never delete findings, decisions, or ADRs.
+1. Read this file, then `wezterm-gpui/docs/STATE.json`. For lua keys also `docs/lua-config.json`.
+2. Treat `STATE.json` `current_phase`, `next`, `blockers`, `pins` as live (this HANDOFF can lag; if they disagree, **STATE wins**, then update this file if the story changed). Lua per-key status: **`docs/lua-config.json` wins**.
+3. After material work: update `STATE.json`; if a lua key changed, update `docs/lua-config.json` (`stats` / `keys` / `backlog`); append `docs/adr/` or `docs/decisions/`; if the narrative of “where we are / what’s next” changed, update **this HANDOFF.md** so the next fresh session stays accurate.
+4. Never delete findings, decisions, ADRs, or lua-config key rows.
 5. Do not change default `wezterm-gui` / `window` behavior.
 
 Docs index:
 
 - `docs/STATE.json` — machine tracker
+- `docs/lua-config.json` — per-key lua honor + stats (do not duplicate long lists elsewhere)
 - `docs/help/resume.md` — short commands
 - `docs/plans/000-feasibility-spike.md` — original feasibility plan (blast radius, effort)
 - `docs/plans/020-lua-config-first-slice.md` — load wezterm.lua (font/size/scheme/scrollback/bell)
@@ -264,6 +270,7 @@ Docs index:
 - `docs/plans/031-cursor-block-until-backspace.md` — parked: block cursor missing until backspace
 - `docs/plans/032-tab-close-exit-keys.md` — tab X / `exit` left typing dead (**better now**)
 - `docs/plans/033-last-tab-exit-quits.md` — last-tab `exit` quits like wezterm (**user-ok**)
+- `docs/plans/034-lua-config-second-slice.md` — remaining ~/.wezterm.lua chrome + mouse_bindings (**user-ok**; hover highlight backlog)
 - `docs/adr/` — accepted decisions (0003 = GPUI-owned FreeType)
-- `docs/decisions/` — 016 paint quality; 017 line sprites; 018 ConPTY junk later; 019 gpui-fps HUD; 020 lua config first slice; 021 mouse selection + copy/paste; 022 click ≠ selection + term focus; 023 box-draw + cell clip; 024 4K line-sprite dest; 025 120dpi clip+dest; 026 monitor-move hang backlog; 027 new-tab shell menu; 028 icon assets; 029 cursor cell span; 030 integer cell grid; 031 cursor until backspace backlog; 032 tab close/exit keys; 033 last-tab `exit` quits
-- `docs/reference/` — rendering-quality (current), gpui-terminal / tty7, steal-list, open-questions, scrollback
+- `docs/decisions/` — 016 paint quality; 017 line sprites; 018 ConPTY junk later; 019 gpui-fps HUD; 020 lua config first slice; 021 mouse selection + copy/paste; 022 click ≠ selection + term focus; 023 box-draw + cell clip; 024 4K line-sprite dest; 025 120dpi clip+dest; 026 monitor-move hang backlog; 027 new-tab shell menu; 028 icon assets; 029 cursor cell span; 030 integer cell grid; 031 cursor until backspace backlog; 032 tab close/exit keys; 033 last-tab `exit` quits; 034 lua second slice; 035 lua-config.json matrix
+- `docs/reference/` — rendering-quality (current), lua-config, gpui-terminal / tty7, steal-list, open-questions, scrollback

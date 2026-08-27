@@ -1,0 +1,6 @@
+{
+  "id": "034-lua-config-second-slice",
+  "at": "2026-08-27T21:05:00Z",
+  "decision": "honor_remaining_wezterm_lua_chrome_and_mouse_actions",
+  "rationale": "User asked what else from C:\\Users\\rafael\\.wezterm.lua the GPUI POC can support. 020 already does font/size/scheme/scrollback/bell. Cheap leftovers that actually change behavior: tab_max_width, show_tab_index_in_tab_bar, hide_tab_bar_if_only_one_tab, switch_to_last_active_tab_when_closing_tab, and the file's mouse_bindings (Ctrl+click OpenLinkAtMouseCursor, Ctrl+wheel ScrollByPage, Ctrl+down Nop). Do not grow the HWND on font change (already matches adjust_window_size=false). Do not add a scrollbar widget, max_fps, palette fonts, default_prog, live reload, or wezterm-gui's full default InputMap. Open URI with wezterm-open-url on a side thread (no wezterm.on open-uri)."
+}

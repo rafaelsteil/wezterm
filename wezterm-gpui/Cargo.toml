@@ -43,6 +43,10 @@ wezterm-bidi = { path = "../bidi" }
 # back to Consolas GPUI text (`metrics_for_idx: there is no font with idx=0`).
 wezterm-font = { path = "../wezterm-font", default-features = false, features = ["sys-freetype", "vendor-jetbrains"] }
 wezterm-term = { path = "../term" }
+# 034: Ctrl+click OpenLinkAtMouseCursor (ShellExecute off the UI thread).
+wezterm-open-url = { path = "../wezterm-open-url" }
+# 034: map GPUI modifiers to lua `mouse_bindings` keys.
+wezterm-input-types = { path = "../wezterm-input-types" }
 # Owns `links = "freetype"` in this graph (same crate GPUI font-kit uses).
 freetype-sys = "=0.20.1"
 # GPUI RenderImage frames (same major as gpui's `image`).

@@ -16,6 +16,7 @@ Third local source (already in our Cargo git cache, **GPL-3.0-or-later — read 
 | Task | Open first | Then |
 |---|---|---|
 | **Term rendering quality (current)** | [rendering-quality.md](rendering-quality.md) | [steal-list.md](steal-list.md) |
+| **Lua config keys** | [lua-config.md](lua-config.md) | [`docs/lua-config.json`](../lua-config.json) |
 | **Scrollback** | [scrollback.md](scrollback.md) | wezterm-gui `set_viewport` / `scroll_by_line` |
 | GPUI `text_system` vs sprites | [gpui-text-vs-sprites.md](gpui-text-vs-sprites.md) | [tty7.md](tty7.md) `element.rs` |
 | GPUI `shape_line` / Element paint | [tty7.md](tty7.md) (`element.rs`) | Zed `terminal_element.rs` (ideas only) |

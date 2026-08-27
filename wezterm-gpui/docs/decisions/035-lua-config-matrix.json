@@ -1,0 +1,6 @@
+{
+  "id": "035-lua-config-matrix",
+  "at": "2026-08-27T22:05:00Z",
+  "decision": "lua_config_per_key_matrix_is_docs_lua_config_json",
+  "rationale": "User after 034 try: there will be a ton of lua keys to implement and test; keep a centralized matrix instead of scattering status only in HANDOFF/STATE. Live file is docs/lua-config.json (stats + keys + backlog). Human index docs/reference/lua-config.md. STATE.json points at it. Do not delete key rows."
+}

@@ -7,9 +7,10 @@
 //! Still not `wezterm-gui` or `window/`. Paint is wezterm-font sprites
 //! in `glyph_paint.rs` (Consolas text fallback in `term_pane.rs`).
 //!
-//! Lua config is loaded (decision 020). Plus / Ctrl+T still spawn Command
+//! Lua config is loaded (decision 020, 034). Plus / Ctrl+T still spawn Command
 //! Prompt (`%ComSpec%`); the new-tab chevron can spawn PowerShell (027).
-//! Lua `default_prog` / `launch_menu` stay unused.
+//! Lua `default_prog` / `launch_menu` stay unused. Tab chrome + user
+//! `mouse_bindings` (Ctrl+click link, Ctrl+wheel page) are 034.
 
 use std::sync::{Arc, OnceLock};
 

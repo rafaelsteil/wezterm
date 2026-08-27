@@ -1,0 +1,269 @@
+{
+  "id": "wezterm-gpui-lua-config",
+  "schema_version": 1,
+  "updated": "2026-08-27T22:05:00Z",
+  "source_file": "C:\\Users\\rafael\\.wezterm.lua",
+  "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
+  "stats": {
+    "keys": 22,
+    "user_ok": 11,
+    "partial": 1,
+    "not_tested": 1,
+    "no_visible_change": 3,
+    "not_wired_or_parked": 6
+  },
+  "backlog": [
+    {
+      "id": "hyperlink_hover_highlight",
+      "key": "mouse_bindings OpenLinkAtMouseCursor",
+      "detail": "Ctrl+click opens the URL (user-ok 2026-08-27) but does not underline / hand-cursor the link on hover the way wezterm-gui does. Do not start unless asked.",
+      "blocked_by": []
+    },
+    {
+      "id": "enable_scroll_bar",
+      "key": "enable_scroll_bar",
+      "detail": "User lua true. No GPUI scrollbar widget. Do not start unless asked.",
+      "blocked_by": []
+    },
+    {
+      "id": "max_fps",
+      "key": "max_fps",
+      "detail": "User lua 120. GPUI owns refresh. Do not start unless asked.",
+      "blocked_by": []
+    },
+    {
+      "id": "command_palette_font",
+      "key": "command_palette_font / command_palette_font_size",
+      "detail": "Palette parked. Do not start unless asked.",
+      "blocked_by": ["palette_parked"]
+    },
+    {
+      "id": "adjust_window_size_when_changing_font_size",
+      "key": "adjust_window_size_when_changing_font_size",
+      "detail": "User lua false; GPUI never grows the HWND on palette font bump (already matched). User did not test 2026-08-27.",
+      "blocked_by": []
+    }
+  ],
+  "keys": [
+    {
+      "key": "font",
+      "in_user_lua": true,
+      "user_value": "Cascadia Mono",
+      "slice": "020",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T14:36:00Z",
+      "notes": "User-ok with coverage blit (“works like a charm”)."
+    },
+    {
+      "key": "font_size",
+      "in_user_lua": true,
+      "user_value": "11.0",
+      "slice": "020",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T14:36:00Z",
+      "notes": "AppShell.font_px from config."
+    },
+    {
+      "key": "color_scheme",
+      "in_user_lua": true,
+      "user_value": "Dracula (Official)",
+      "slice": "020",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T14:36:00Z",
+      "notes": "BGRA swap was required; not a wrong scheme load."
+    },
+    {
+      "key": "scrollback_lines",
+      "in_user_lua": true,
+      "user_value": "10000",
+      "slice": "020",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T14:36:00Z",
+      "notes": "TermConfig::scrollback_size. Wheel viewport is 015."
+    },
+    {
+      "key": "audible_bell",
+      "in_user_lua": true,
+      "user_value": "Disabled",
+      "slice": "020",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T14:36:00Z",
+      "notes": "Disabled is a no-op; SystemBeep would MessageBeep."
+    },
+    {
+      "key": "adjust_window_size_when_changing_font_size",
+      "in_user_lua": true,
+      "user_value": "false",
+      "slice": "034",
+      "gpui": "already_matched",
+      "user_try": "not_tested",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "GPUI never grows the HWND on palette font bump. User did not test."
+    },
+    {
+      "key": "use_fancy_tab_bar",
+      "in_user_lua": true,
+      "user_value": "true",
+      "slice": "034",
+      "gpui": "already_matched",
+      "user_try": "no_visible_change",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Only gpui-component TabBar exists (no retro). User did not notice a change — expected."
+    },
+    {
+      "key": "window_decorations",
+      "in_user_lua": true,
+      "user_value": "INTEGRATED_BUTTONS|RESIZE",
+      "slice": "028+034",
+      "gpui": "already_matched",
+      "user_try": "no_visible_change",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "028 TitleBar already Hide/Maximize/Close. User did not notice a change — expected. Includes integrated_title_button_*."
+    },
+    {
+      "key": "integrated_title_button_alignment",
+      "in_user_lua": true,
+      "user_value": "Right",
+      "slice": "028",
+      "gpui": "already_matched",
+      "user_try": "no_visible_change",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Rolled into window_decorations row."
+    },
+    {
+      "key": "show_tab_index_in_tab_bar",
+      "in_user_lua": true,
+      "user_value": "false",
+      "slice": "034",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "User-ok after flipping / trying 034."
+    },
+    {
+      "key": "hide_tab_bar_if_only_one_tab",
+      "in_user_lua": true,
+      "user_value": "false",
+      "slice": "034",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "User-ok."
+    },
+    {
+      "key": "tab_max_width",
+      "in_user_lua": true,
+      "user_value": "32",
+      "slice": "034",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Truncates with ellipsis. User-ok."
+    },
+    {
+      "key": "switch_to_last_active_tab_when_closing_tab",
+      "in_user_lua": true,
+      "user_value": "true",
+      "slice": "034",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "User-ok."
+    },
+    {
+      "key": "mouse_bindings.ctrl_click_open_link",
+      "in_user_lua": true,
+      "user_value": "CTRL + Left Up → OpenLinkAtMouseCursor",
+      "slice": "034",
+      "gpui": "partial",
+      "user_try": "partial",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Open works. Hover underline / hand cursor missing (backlog hyperlink_hover_highlight). Do not start unless asked."
+    },
+    {
+      "key": "mouse_bindings.ctrl_down_nop",
+      "in_user_lua": true,
+      "user_value": "CTRL + Left Down → Nop",
+      "slice": "034",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Click is not a selection. User-ok."
+    },
+    {
+      "key": "mouse_bindings.ctrl_wheel_scroll_by_page",
+      "in_user_lua": true,
+      "user_value": "CTRL + Wheel → ScrollByPage ±0.25",
+      "slice": "034",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "User-ok."
+    },
+    {
+      "key": "enable_scroll_bar",
+      "in_user_lua": true,
+      "user_value": "true",
+      "slice": null,
+      "gpui": "not_wired",
+      "user_try": "n_a",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "No scrollbar widget. Backlog. Do not start unless asked."
+    },
+    {
+      "key": "max_fps",
+      "in_user_lua": true,
+      "user_value": "120",
+      "slice": null,
+      "gpui": "not_wired",
+      "user_try": "n_a",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "GPUI owns refresh. Backlog. Do not start unless asked."
+    },
+    {
+      "key": "command_palette_font_size",
+      "in_user_lua": true,
+      "user_value": "12.0",
+      "slice": null,
+      "gpui": "parked",
+      "user_try": "n_a",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Palette parked."
+    },
+    {
+      "key": "command_palette_font",
+      "in_user_lua": true,
+      "user_value": "Segoe UI",
+      "slice": null,
+      "gpui": "parked",
+      "user_try": "n_a",
+      "at": "2026-08-27T22:05:00Z",
+      "notes": "Palette parked."
+    },
+    {
+      "key": "default_prog",
+      "in_user_lua": false,
+      "user_value": null,
+      "slice": "020",
+      "gpui": "not_wired",
+      "user_try": "n_a",
+      "at": "2026-08-27T13:30:00Z",
+      "notes": "Plus / Ctrl+T still Command Prompt. Do not honor unless asked."
+    },
+    {
+      "key": "launch_menu",
+      "in_user_lua": false,
+      "user_value": null,
+      "slice": "027",
+      "gpui": "not_wired",
+      "user_try": "n_a",
+      "at": "2026-08-27T19:30:00Z",
+      "notes": "Chevron is hardcoded cmd / PowerShell / pwsh. Do not honor unless asked."
+    }
+  ]
+}

@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-27T20:55:00Z",
+  "updated": "2026-08-27T22:05:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "033 last-tab `exit` quits **user-ok** (“works great”). Wait for the next bug list. Backlog (do not start): cursor missing until backspace (031), monitor-move hang 2–3s (026), Powerline, FPS HUD (019), ConPTY junk (018). Palette parked. Do not start window/ cutover.",
+      "action": "034 lua second slice **user-ok** (tab chrome + Ctrl+click open + Ctrl+wheel). Partial: no hyperlink hover highlight (backlog; do not start unless asked). Lua per-key matrix: docs/lua-config.json. Wait for the next bug list. Backlog (do not start): 031 cursor, 026 monitor-move hang, Powerline, FPS HUD, ConPTY junk (018), scrollbar, max_fps. Palette parked. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok**. 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -166,6 +166,11 @@
       "id": "last-tab-exit-quits",
       "status": "done",
       "notes": "033: last-tab `exit` quits the app like wezterm-gui (not a replacement shell). Last-tab X still confirm-quit. **User-ok** 2026-08-27 (“works great”)."
+    },
+    {
+      "id": "lua-config-second-slice",
+      "status": "done",
+      "notes": "034: remaining keys from ~/.wezterm.lua. **User-ok** 2026-08-27: tab_max_width, show_tab_index, hide-if-one, last-active-on-close, Ctrl+down Nop, Ctrl+wheel. Ctrl+click **opens** but no hover highlight (backlog). Fancy tab bar / decorations: no visible change (already matched). adjust_window_size not tested. Matrix: docs/lua-config.json."
     },
     {
       "id": "delete-old-ui",
@@ -381,6 +386,18 @@
       "decision": "last_tab_process_exit_quits_app",
       "rationale": "User after 032: better now; last-tab `exit` should fully close like wezterm-gui, not spawn a replacement. Last-tab X still confirm_quit.",
       "record": "docs/decisions/033-last-tab-exit-quits.json"
+    },
+    {
+      "at": "2026-08-27T21:10:00Z",
+      "decision": "honor_remaining_wezterm_lua_chrome_and_mouse_actions",
+      "rationale": "User asked what else from ~/.wezterm.lua GPUI can support. Cheap leftovers: tab chrome + the file's mouse_bindings (Ctrl+click OpenLink, Ctrl+wheel ScrollByPage). Not a full InputMap. No scrollbar/max_fps/palette fonts/default_prog/live reload.",
+      "record": "docs/decisions/034-lua-config-second-slice.json"
+    },
+    {
+      "at": "2026-08-27T22:05:00Z",
+      "decision": "lua_config_per_key_matrix_is_docs_lua_config_json",
+      "rationale": "User after 034 try: lots of lua keys to implement and test. Live matrix is docs/lua-config.json (stats + keys + backlog). Human index docs/reference/lua-config.md. Do not scatter per-key status only in HANDOFF.",
+      "record": "docs/decisions/035-lua-config-matrix.json"
     }
   ],
   "constraints": [
@@ -448,7 +465,13 @@
       "status": "poc_user_ok",
       "legacy": "config::common_init + ~/.wezterm.lua",
       "gpui": "wezterm-gpui/src/mux_host.rs + glyph_paint.rs + shell.rs",
-      "e2e": "user-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui (“works like a charm”); still cmd.exe"
+      "e2e": "user-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui (“works like a charm”); still cmd.exe. 034 chrome/mouse user-ok except hover highlight. Per-key: docs/lua-config.json."
+    },
+    "lua_config_second_slice": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui tabbar.rs + inputmap.rs mouse_bindings + termwindow OpenLinkAtMouseCursor",
+      "gpui": "wezterm-gpui/src/lua_ui.rs + shell.rs tab chrome; term_pane.rs lookup_lua_mouse + wezterm-open-url",
+      "e2e": "user-tried 2026-08-27: tab index / hide-if-one / max width / last-active / Ctrl+down / Ctrl+wheel **ok**. Ctrl+click **opens**, no hover highlight (backlog). Fancy tab bar + decorations: no visible change (already matched). adjust_window_size not tested."
     },
     "selection_copy_paste": {
       "status": "poc_user_ok",
@@ -850,6 +873,16 @@
       "at": "2026-08-27T20:55:00Z",
       "id": "033_last_tab_exit_quits_user_ok",
       "detail": "User 2026-08-27 after 033: “works great.” Last-tab `exit` closes the app like wezterm-gui. Wait for the next bug list. Do not start 026/031."
+    },
+    {
+      "at": "2026-08-27T21:10:00Z",
+      "id": "lua_config_second_slice_wired",
+      "detail": "034 from C:\\\\Users\\\\rafael\\\\.wezterm.lua leftovers. Already 020: font/size/scheme/scrollback/bell. Already matched (no code): adjust_window_size_when_changing_font_size=false, use_fancy_tab_bar, 028 INTEGRATED_BUTTONS. Wired: tab_max_width 32, show_tab_index_in_tab_bar, hide_tab_bar_if_only_one_tab, switch_to_last_active_tab_when_closing_tab, user mouse_bindings OpenLinkAtMouseCursor/Nop/ScrollByPage (not default InputMap). Out: enable_scroll_bar, max_fps, command_palette_font, default_prog, live reload, wezterm.on, hover underline. cargo check --manifest-path wezterm-gpui/Cargo.toml green; cargo test --lib lua_ui 4/4. Needs user-try."
+    },
+    {
+      "at": "2026-08-27T22:05:00Z",
+      "id": "034_lua_second_slice_user_try",
+      "detail": "User 2026-08-27 after 034: show_tab_index, hide_tab_bar_if_only_one_tab, tab_max_width, switch_to_last_active, Ctrl+down Nop, Ctrl+wheel **work**. Ctrl+click OpenLink **works** but does not highlight the link by default (backlog hyperlink_hover_highlight; do not start unless asked). use_fancy_tab_bar and window_decorations: no visible change (already matched). adjust_window_size not tested. Central matrix: docs/lua-config.json (decision 035)."
     }
   ],
   "blockers": [],
@@ -869,6 +902,8 @@
     "conpty_vertical_junk": "also_in_wezterm_gui_polish_later",
     "gpui_fps_hud": "wired_off_by_default_come_back_later",
     "lua_config": "user_ok_font_scheme_scrollback_bell",
+    "lua_config_second_slice_034": "user_ok_except_hyperlink_hover_highlight",
+    "lua_config_matrix": "docs/lua-config.json",
     "selection_copy_paste": "user_ok",
     "click_focus_022": "user_ok",
     "boxdraw_cell_clip_023": "user_ok_boxdraw_clip_reverted_025",

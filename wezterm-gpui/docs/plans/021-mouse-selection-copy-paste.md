@@ -15,7 +15,7 @@ GUI-side selection on `TermPane`, like wezterm-gui `TermWindow.selection`. Not s
 
 ## Out
 
-- Lua `mouse_bindings` (Ctrl+click hyperlinks, Ctrl+wheel)
+- Full default mouse InputMap (021 selection stays hardcoded; 034 looks up **user** `mouse_bindings` only)
 - Rectangular / block select
 - Copy-on-select
 - Right-click paste / context menu

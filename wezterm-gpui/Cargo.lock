@@ -8680,6 +8680,8 @@ dependencies = [
  "promise",
  "wezterm-bidi",
  "wezterm-font",
+ "wezterm-input-types",
+ "wezterm-open-url",
  "wezterm-term",
 ]
 

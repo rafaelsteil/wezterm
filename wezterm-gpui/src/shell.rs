@@ -12,6 +12,7 @@ use gpui_component::{
 };
 
 use crate::confirm::{open_confirm, open_line_prompt};
+use crate::lua_ui::{active_after_close, format_tab_title, show_tab_bar};
 use crate::palette::{CommandPalette, PaletteEvent};
 use crate::shells::ShellProfile;
 use crate::term_pane::{TermPane, TermPaneEvent};
@@ -72,6 +73,8 @@ pub struct AppShell {
     focus_handle: FocusHandle,
     tabs: Vec<ShellTab>,
     active: usize,
+    /// Previous `active` index, for `switch_to_last_active_tab_when_closing_tab`.
+    last_active: Option<usize>,
     font_px: f32,
     palette: Entity<CommandPalette>,
     palette_open: bool,
@@ -124,6 +127,7 @@ impl AppShell {
             focus_handle: focus_handle.clone(),
             tabs: vec![first],
             active: 0,
+            last_active: None,
             font_px,
             palette,
             palette_open: false,
@@ -229,9 +233,20 @@ impl AppShell {
             cx,
         );
         let term = tab.term.clone();
+        if !self.tabs.is_empty() {
+            self.last_active = Some(self.active);
+        }
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
         self.watch_pane(term, cx);
+    }
+
+    fn activate_tab(&mut self, index: usize) {
+        if index >= self.tabs.len() || index == self.active {
+            return;
+        }
+        self.last_active = Some(self.active);
+        self.active = index;
     }
 
     fn watch_pane(&mut self, term: Entity<TermPane>, cx: &mut Context<Self>) {
@@ -253,16 +268,9 @@ impl AppShell {
         if index >= self.tabs.len() {
             return;
         }
-        let last = self.tabs.len() <= 1;
-        self.tabs.remove(index);
-        if last || self.tabs.is_empty() {
+        if self.remove_tab_at(index) {
             cx.quit();
             return;
-        }
-        if self.active >= self.tabs.len() {
-            self.active = self.tabs.len() - 1;
-        } else if self.active > index {
-            self.active -= 1;
         }
         self.focus_pending = true;
         cx.notify();
@@ -292,12 +300,43 @@ impl AppShell {
         if self.tabs.len() <= 1 || index >= self.tabs.len() {
             return;
         }
-        self.tabs.remove(index);
-        if self.active >= self.tabs.len() {
-            self.active = self.tabs.len() - 1;
-        } else if self.active > index {
-            self.active -= 1;
+        let _ = self.remove_tab_at(index);
+    }
+
+    /// Remove `index`. `true` if that was the last tab (caller should quit).
+    fn remove_tab_at(&mut self, index: usize) -> bool {
+        if index >= self.tabs.len() {
+            return self.tabs.is_empty();
         }
+        if self.tabs.len() <= 1 {
+            self.tabs.clear();
+            self.active = 0;
+            self.last_active = None;
+            return true;
+        }
+        let switch = config::configuration().switch_to_last_active_tab_when_closing_tab;
+        let new_active = active_after_close(
+            self.active,
+            self.last_active,
+            index,
+            self.tabs.len(),
+            switch,
+        );
+        let prev_last = self.last_active;
+        self.tabs.remove(index);
+        self.active = new_active;
+        self.last_active = prev_last.and_then(|i| {
+            if i == index {
+                return None;
+            }
+            let adj = if i > index { i - 1 } else { i };
+            if adj == self.active {
+                None
+            } else {
+                Some(adj)
+            }
+        });
+        false
     }
 
     fn confirm_close_active(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -529,12 +568,29 @@ impl Render for AppShell {
         }
         let active = self.active.min(self.tabs.len().saturating_sub(1));
         let term = self.tabs.get(active).map(|t| t.term.clone());
+        let cfg = config::configuration();
         let tab_titles: Vec<(usize, String)> = self
             .tabs
             .iter()
             .enumerate()
-            .map(|(i, t)| (i, t.title(cx)))
+            .map(|(i, t)| {
+                (
+                    i,
+                    format_tab_title(
+                        i,
+                        &t.title(cx),
+                        cfg.show_tab_index_in_tab_bar,
+                        cfg.tab_and_split_indices_are_zero_based,
+                        cfg.tab_max_width,
+                    ),
+                )
+            })
             .collect();
+        let show_tabs = show_tab_bar(
+            self.tabs.len(),
+            cfg.enable_tab_bar,
+            cfg.hide_tab_bar_if_only_one_tab,
+        );
         let palette_open = self.palette_open;
         let status_title = self
             .tabs
@@ -591,69 +647,71 @@ impl Render for AppShell {
                         ),
                 ),
             )
-            .child(
-                TabBar::new("tabs")
-                    .selected_index(active)
-                    .on_click(cx.listener(|this, index, window, cx| {
-                        this.active = *index;
-                        this.request_terminal_focus(window, cx);
-                        cx.notify();
-                    }))
-                    .children(tab_titles.into_iter().map(|(index, title)| {
-                        Tab::new().label(title).suffix(
-                            Button::new(("close-tab", index as u64))
-                                .icon(IconName::Close)
-                                .ghost()
-                                .xsmall()
-                                .on_click(cx.listener(move |this, _, window, cx| {
-                                    this.confirm_close_tab_at(index, window, cx);
-                                })),
-                        )
-                    }))
-                    .suffix({
-                        let shells = self.shells.clone();
-                        let plus_tip = format!(
-                            "New tab — {} (Ctrl+T)",
-                            shells
-                                .first()
-                                .map(|s| s.label.as_str())
-                                .unwrap_or("Command Prompt")
-                        );
-                        let view = cx.entity();
-                        DropdownButton::new("new-tab")
-                            .ghost()
-                            .xsmall()
-                            .button(
-                                Button::new("new-tab-plus")
-                                    .icon(IconName::Plus)
+            .when(show_tabs, |this| {
+                this.child(
+                    TabBar::new("tabs")
+                        .selected_index(active)
+                        .on_click(cx.listener(|this, index, window, cx| {
+                            this.activate_tab(*index);
+                            this.request_terminal_focus(window, cx);
+                            cx.notify();
+                        }))
+                        .children(tab_titles.into_iter().map(|(index, title)| {
+                            Tab::new().label(title).suffix(
+                                Button::new(("close-tab", index as u64))
+                                    .icon(IconName::Close)
                                     .ghost()
                                     .xsmall()
-                                    .tooltip(plus_tip)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.add_tab(cx);
-                                        this.request_terminal_focus(window, cx);
-                                        cx.notify();
+                                    .on_click(cx.listener(move |this, _, window, cx| {
+                                        this.confirm_close_tab_at(index, window, cx);
                                     })),
                             )
-                            .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
-                                let mut menu = menu;
-                                for profile in &shells {
-                                    let profile = profile.clone();
-                                    let view = view.clone();
-                                    menu = menu.item(
-                                        PopupMenuItem::new(profile.label.clone()).on_click(
-                                            move |_, window, cx| {
-                                                view.update(cx, |this, cx| {
-                                                    this.spawn_profile(&profile, window, cx);
-                                                });
-                                            },
-                                        ),
-                                    );
-                                }
-                                menu
-                            })
-                    }),
-            )
+                        }))
+                        .suffix({
+                            let shells = self.shells.clone();
+                            let plus_tip = format!(
+                                "New tab — {} (Ctrl+T)",
+                                shells
+                                    .first()
+                                    .map(|s| s.label.as_str())
+                                    .unwrap_or("Command Prompt")
+                            );
+                            let view = cx.entity();
+                            DropdownButton::new("new-tab")
+                                .ghost()
+                                .xsmall()
+                                .button(
+                                    Button::new("new-tab-plus")
+                                        .icon(IconName::Plus)
+                                        .ghost()
+                                        .xsmall()
+                                        .tooltip(plus_tip)
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.add_tab(cx);
+                                            this.request_terminal_focus(window, cx);
+                                            cx.notify();
+                                        })),
+                                )
+                                .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                                    let mut menu = menu;
+                                    for profile in &shells {
+                                        let profile = profile.clone();
+                                        let view = view.clone();
+                                        menu = menu.item(
+                                            PopupMenuItem::new(profile.label.clone()).on_click(
+                                                move |_, window, cx| {
+                                                    view.update(cx, |this, cx| {
+                                                        this.spawn_profile(&profile, window, cx);
+                                                    });
+                                                },
+                                            ),
+                                        );
+                                    }
+                                    menu
+                                })
+                        }),
+                )
+            })
             .child(
                 div()
                     .id("term-host")
