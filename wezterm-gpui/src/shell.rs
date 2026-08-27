@@ -25,6 +25,7 @@ actions!(
         NewTab,
         CloseTab,
         QuitPoc,
+        ToggleFps,
     ]
 );
 
@@ -38,6 +39,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-t", NewTab, None),
         KeyBinding::new("ctrl-w", CloseTab, None),
         KeyBinding::new("ctrl-q", QuitPoc, None),
+        KeyBinding::new("ctrl-shift-f", ToggleFps, None),
         KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
         KeyBinding::new("up", PaletteMoveUp, Some(PALETTE_CONTEXT)),
         KeyBinding::new("down", PaletteMoveDown, Some(PALETTE_CONTEXT)),
@@ -65,6 +67,9 @@ pub struct AppShell {
     font_px: f32,
     palette: Entity<CommandPalette>,
     palette_open: bool,
+    /// gpui-fps HUD. Off by default (019). Ctrl+Shift+F toggles.
+    /// While visible the stock monitor is continuous (sustain FPS).
+    show_fps: bool,
 }
 
 impl Focusable for AppShell {
@@ -90,13 +95,15 @@ impl AppShell {
         })
         .detach();
 
+        let font_px = crate::mux_host::config_font_size();
         Self {
             focus_handle: cx.focus_handle(),
-            tabs: vec![Self::new_tab(14., cx)],
+            tabs: vec![Self::new_tab(font_px, cx)],
             active: 0,
-            font_px: 14.,
+            font_px,
             palette,
             palette_open: false,
+            show_fps: false,
         }
     }
 
@@ -107,7 +114,7 @@ impl AppShell {
             "Quit WezTerm" => self.confirm_quit(window, cx),
             "Increase font size" => self.bump_font(1., cx),
             "Decrease font size" => self.bump_font(-1., cx),
-            "Reset font size" => self.set_font(14., cx),
+            "Reset font size" => self.set_font(crate::mux_host::config_font_size(), cx),
             "Clear scrollback" => {
                 if let Some(tab) = self.tabs.get(self.active) {
                     tab.term.update(cx, |term, cx| {
@@ -305,6 +312,11 @@ impl AppShell {
         self.confirm_quit(window, cx);
     }
 
+    fn toggle_fps(&mut self, _: &ToggleFps, _: &mut Window, cx: &mut Context<Self>) {
+        self.show_fps = !self.show_fps;
+        cx.notify();
+    }
+
     fn on_term_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.palette_open || window.has_active_dialog(cx) {
             return;
@@ -321,7 +333,7 @@ impl AppShell {
 }
 
 impl Render for AppShell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let active = self.active.min(self.tabs.len().saturating_sub(1));
         let term = self.tabs.get(active).map(|t| t.term.clone());
         let tab_titles: Vec<(usize, String)> = self
@@ -358,6 +370,7 @@ impl Render for AppShell {
             .on_action(cx.listener(Self::on_new_tab))
             .on_action(cx.listener(Self::on_close_tab))
             .on_action(cx.listener(Self::on_quit))
+            .on_action(cx.listener(Self::toggle_fps))
             .on_key_down(cx.listener(Self::on_term_key))
             .relative()
             .size_full()
@@ -432,8 +445,10 @@ impl Render for AppShell {
                     .border_color(cx.theme().border)
                     .child(
                         Label::new(format!(
-                            "Ctrl+Shift+P palette  ·  {}  ·  {}  ·  mux LocalDomain cmd.exe",
-                            status_title, status_line
+                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+F fps  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain cmd.exe",
+                            crate::mux_host::config_status(),
+                            status_title,
+                            status_line
                         ))
                         .text_size(px(11.))
                         .text_color(cx.theme().muted_foreground),
@@ -463,6 +478,9 @@ impl Render for AppShell {
                                 .child(self.palette.clone()),
                         ),
                 )
+            })
+            .when(self.show_fps, |this| {
+                this.child(gpui_fps::fps_monitor(window, cx))
             })
     }
 }

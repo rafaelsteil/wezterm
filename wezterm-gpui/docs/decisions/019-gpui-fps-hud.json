@@ -1,0 +1,6 @@
+{
+  "id": "019-gpui-fps-hud",
+  "at": "2026-08-27T03:10:00Z",
+  "decision": "measure_paint_with_gpui_fps",
+  "rationale": "User asked to integrate longbridge gpui-fps to measure terminal paint. Same git/rev as gpui-component (ff3eb112). Enables gpui/profiler. Stock fps_monitor is continuous: while visible the window never idles (sustain rate, not idle redraw). Click HUD to compact. Do not bump Zed; adding the crate re-resolved unpinned zed git — pin back via cargo update --precise. User 2026-08-26: leave HUD off by default; come back later. Ctrl+Shift+F still toggles. For UX lag use non-continuous FRAME during typing/dir; for ceiling use continuous FPS. Non-continuous toggle not wired yet."
+}

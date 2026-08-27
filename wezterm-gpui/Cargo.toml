@@ -18,9 +18,12 @@ async-channel = "2.3"
 # Do not put `rev` on these: gpui-component depends on the same git URL without
 # `rev`. Mixing `?rev=` and unpinned git duplicates gpui in the graph.
 # Zed SHA is pinned in Cargo.lock (see docs/STATE.json pins.gpui_rev).
-gpui = { git = "https://github.com/zed-industries/zed" }
+gpui = { git = "https://github.com/zed-industries/zed", features = ["profiler"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
 gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
+# Same git/rev as gpui-component. Enables `gpui/profiler` for FrameTimingCollector.
+# Do not pin a different rev — that duplicates gpui.
+gpui-fps = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
 # Same local-shell host as wezterm-gui (`mux` LocalDomain / LocalPane).
 # wezterm-font uses GPUI's freetype-sys (`sys-freetype`); do not take
 # wezterm-gui or window (event loop). cairo-sys is WezTerm's vendored cairo

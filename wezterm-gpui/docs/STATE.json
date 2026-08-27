@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-27T02:56:00Z",
+  "updated": "2026-08-27T14:36:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "017 paint feel user-ok 2026-08-26. Next: visual leftovers vs wezterm-gui (box-draw, clip, selection) if they still get in the way. Do not start GPUI text unless paint feels slow again. ConPTY junk later (018). Palette parked. Workstream: docs/reference/rendering-quality.md.",
+      "action": "020 lua + Dracula/Cascadia **user-ok** (“works like a charm”) after BGRA swap and coverage blit. Next: visual leftovers vs wezterm-gui if they still get in the way. FPS HUD off (019). ConPTY junk later (018). Palette parked.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 120dpi user-ok. 017 line sprites user-ok (“much better”). ConPTY junk also in wezterm-gui (018) — later polish. Next: visual leftovers vs wezterm-gui. See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 120dpi user-ok. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok** (BGRA + coverage blit). ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -101,6 +101,11 @@
       "id": "external-gpui-terminal-eval",
       "status": "done",
       "notes": "Cloned D:\\dev\\gpui-terminal and D:\\dev\\tty7. Notes in docs/reference/. Open questions: live PTY resize, GPUI text vs sprites. No path deps, no paint rewrite."
+    },
+    {
+      "id": "lua-config-first-slice",
+      "status": "done",
+      "notes": "Load wezterm.lua (skip_config=false). Apply font, font_size, color_scheme, scrollback_lines, audible_bell. Still force cmd.exe. User-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui after BGRA swap + coverage blit (“works like a charm”)."
     },
     {
       "id": "delete-old-ui",
@@ -226,6 +231,18 @@
       "decision": "conpty_vertical_junk_is_later_polish",
       "rationale": "User: official wezterm-gui also generates vertical junk. Not a GPUI-only bug; do not spend a GPUI session on it.",
       "record": "docs/decisions/018-conpty-junk-also-wezterm-gui.json"
+    },
+    {
+      "at": "2026-08-27T03:10:00Z",
+      "decision": "measure_paint_with_gpui_fps",
+      "rationale": "User asked to integrate longbridge gpui-fps. Same git/rev as gpui-component. HUD off by default after user 2026-08-26; Ctrl+Shift+F. Come back later for measurement (continuous vs FRAME). Adding the crate re-resolved unpinned Zed; pin back with cargo update --precise.",
+      "record": "docs/decisions/019-gpui-fps-hud.json"
+    },
+    {
+      "at": "2026-08-27T13:30:00Z",
+      "decision": "load_wezterm_lua_apply_paint_settings",
+      "rationale": "User asked to honor lua config. First slice: font, font_size, color_scheme, scrollback_lines, audible_bell. Keep forcing cmd.exe. No chrome keys, mouse bindings, or live reload.",
+      "record": "docs/decisions/020-lua-config-first-slice.json"
     }
   ],
   "constraints": [
@@ -266,6 +283,11 @@
       "gpui": "wezterm-gpui/src/shell.rs",
       "e2e": "target\\debug\\wezterm.exe gpui → HWND WezTerm GPUI; user-tried and approved 2026-08-26"
     },
+    "fps_hud": {
+      "status": "poc_overlay",
+      "gpui": "gpui_fps::fps_monitor in shell.rs",
+      "e2e": "compile green; off by default; Ctrl+Shift+F; come back later"
+    },
     "confirm_prompt": {
       "status": "poc_overlay",
       "legacy": "wezterm-gui/src/overlay/confirm.rs + overlay/prompt.rs",
@@ -283,6 +305,12 @@
       "legacy": "mux LocalDomain::spawn_pane + LocalPane (wezterm-gui uses this, then glyph-paints)",
       "gpui": "wezterm-gpui/src/mux_host.rs + term_pane.rs",
       "e2e": "user-tried 2026-08-26 cmd.exe; 120dpi ok; 017 line sprites “much better” (typing/dir/scroll)"
+    },
+    "lua_config": {
+      "status": "poc_user_ok",
+      "legacy": "config::common_init + ~/.wezterm.lua",
+      "gpui": "wezterm-gpui/src/mux_host.rs + glyph_paint.rs + shell.rs",
+      "e2e": "user-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui (“works like a charm”); still cmd.exe"
     },
     "scrollback_viewport": {
       "status": "poc_user_ok",
@@ -462,6 +490,31 @@
       "at": "2026-08-27T02:56:00Z",
       "id": "line_sprites_user_ok",
       "detail": "User retry after 017: “yah, much better now.” Line-sprite paint + mux coalesce is good enough for now. Do not start a GPUI text_system rewrite unless lag comes back. Next rendering work is visual leftovers vs wezterm-gui if they still get in the way."
+    },
+    {
+      "at": "2026-08-27T03:10:00Z",
+      "id": "gpui_fps_hud_wired",
+      "detail": "gpui-fps from longbridge/gpui-component at the same rev as gpui-component (ff3eb112). fps_monitor overlay on AppShell, Ctrl+Shift+F. gpui features profiler. cargo check green on pinned Zed fecc3273 after cargo update --precise (first resolve walked Zed to f66ed399). User 2026-08-26: leave HUD off by default; come back later. Stock HUD is continuous while visible (sustain rate). Non-continuous FRAME-for-typing toggle not wired."
+    },
+    {
+      "at": "2026-08-27T13:30:00Z",
+      "id": "lua_config_first_slice",
+      "detail": "mux_host skip_config=false so ~/.wezterm.lua loads. Still CommandBuilder cmd.exe (ignore default_prog). FontConfiguration from configuration(); AppShell.font_px from font_size; sync_font scale = font_px/config.font_size. TermConfig already feeds color_scheme and scrollback_lines. Alert::Bell honors audible_bell via MessageBeep. Status bar shows family/size/lua file name. Tab bar/window_decorations/mouse_bindings/max_fps/live reload not wired."
+    },
+    {
+      "at": "2026-08-27T14:10:00Z",
+      "id": "renderimage_bgra_swapped_dracula_brown",
+      "detail": "User compare 2026-08-27: GPUI pane brown vs wezterm-gui Dracula #282a36. Cause: line sprites uploaded as RGBA; gpui::RenderImage is BGRA, so R/B swap (#282a36 → #362a28). paint_quad rgb() was already 0xRRGGBB. Fix: swap channels before Frame::new. Not a wrong color_scheme load."
+    },
+    {
+      "at": "2026-08-27T14:30:00Z",
+      "id": "glyph_double_alpha_thin_text",
+      "detail": "User side-by-side 2026-08-27 after BGRA: colors closer but GPUI lighter and Cascadia thinner than wezterm-gui. Cause: glyph_to_rgba premultiplied fg*alpha, blit multiplied alpha again (fg*alpha²). wezterm-gui grayscale is sRGB_fg * linear_a + bg * (1-a). Cache coverage (not per-fg tint); blit lerps. LCD uses per-channel coverage."
+    },
+    {
+      "at": "2026-08-27T14:36:00Z",
+      "id": "lua_colors_and_glyph_weight_user_ok",
+      "detail": "User retry after coverage blit: “that's it, works like a charm.” Cascadia weight + Dracula colors match wezterm-gui well enough. Lua first slice (font/size/scheme/scrollback/bell) is user-ok."
     }
   ],
   "blockers": [],
@@ -478,6 +531,8 @@
     "external_gpui_terminals": "docs_only_not_deps",
     "scrollback_viewport": "user_ok",
     "palette_charselect": "parked",
-    "conpty_vertical_junk": "also_in_wezterm_gui_polish_later"
+    "conpty_vertical_junk": "also_in_wezterm_gui_polish_later",
+    "gpui_fps_hud": "wired_off_by_default_come_back_later",
+    "lua_config": "user_ok_font_scheme_scrollback_bell"
   }
 }

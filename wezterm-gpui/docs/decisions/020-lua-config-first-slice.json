@@ -1,0 +1,6 @@
+{
+  "id": "020-lua-config-first-slice",
+  "at": "2026-08-27T13:30:00Z",
+  "decision": "load_wezterm_lua_apply_paint_settings",
+  "rationale": "User asked to honor lua config; their file is C:\\Users\\rafael\\.wezterm.lua. First slice: stop skip_config, keep forcing cmd.exe (ignore default_prog), apply font + font_size + color_scheme + scrollback_lines + audible_bell. Tab bar, window_decorations, mouse_bindings, max_fps, live reload, wezterm.on stay out. FontConfiguration::new(Some(configuration()), dpi); sync_font scale = font_px / config.font_size (was hardcoded 14/12). BEL uses MessageBeep, not window/ Connection."
+}

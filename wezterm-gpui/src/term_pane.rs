@@ -15,7 +15,7 @@ use mux::renderable::RenderableDimensions;
 use mux::{Mux, MuxNotification};
 use wezterm_term::color::ColorPalette;
 use wezterm_term::input::{MouseButton, MouseEvent, MouseEventKind};
-use wezterm_term::{KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
+use wezterm_term::{Alert, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
 
 use crate::glyph_paint::{GlyphPainter, TermPaint};
 
@@ -60,7 +60,7 @@ struct PaintCache {
 impl TermPane {
     pub fn spawn(font_px: f32, cx: &mut Context<Self>) -> Self {
         let _ = crate::mux_host::ensure_init();
-        let painter = match GlyphPainter::new() {
+        let painter = match GlyphPainter::new(96) {
             Ok(p) => Some(p),
             Err(err) => {
                 eprintln!("wezterm-gpui wezterm-font init: {err:#}");
@@ -480,6 +480,15 @@ fn spawn_live(cx: &mut Context<TermPane>) -> anyhow::Result<LiveMux> {
         Mux::get().subscribe(move |n| {
             if !alive.load(Ordering::Relaxed) {
                 return false;
+            }
+            if let MuxNotification::Alert {
+                pane_id: id,
+                alert: Alert::Bell,
+            } = &n
+            {
+                if *id == pane_id {
+                    crate::mux_host::maybe_audible_bell();
+                }
             }
             if notification_is_pane(&n, pane_id) {
                 let _ = tx.send_blocking(());

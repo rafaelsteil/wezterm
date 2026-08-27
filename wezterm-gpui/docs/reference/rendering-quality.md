@@ -10,6 +10,8 @@ Decisions: [016](../decisions/016-term-render-quality.json), [017](../decisions/
 
 **017 (2026-08-26):** “yah, much better now.” Line sprites + mux coalesce are good enough for now. Do not start a GPUI `text_system` rewrite unless lag comes back.
 
+**020 (2026-08-27):** Lua font/scheme **user-ok** (“works like a charm”). Brown pane was RGBA vs GPUI BGRA; thin Cascadia was `fg × alpha²`. Coverage blit matches wezterm-gui well enough.
+
 Fairness note: this POC is a **debug** `wezterm-gpui.exe`. Official wezterm-gui is **release**.
 
 ## Done
@@ -22,16 +24,19 @@ Fairness note: this POC is a **debug** `wezterm-gpui.exe`. Official wezterm-gui 
 | Per-line cached `RenderImage` | **User-ok** (017) |
 | Drain mux `PaneOutput` before `notify` | **User-ok** (017) |
 | Skip layout when pane seqno/viewport/cursor unchanged | **User-ok** (017) |
+| gpui-fps HUD | Wired (019), **off by default**. Ctrl+Shift+F. Come back later. |
+| Lua `font` / `color_scheme` | **User-ok** (020; BGRA + coverage blit) |
 
 ## Still wrong / next (smallest first)
 
 1. Visual leftovers vs wezterm-gui: geometry box-draw, per-cell clip, selection/mouse if those get in the way.
 2. GPUI `text_system` spike only if paint feels slow again — [gpui-text-vs-sprites.md](gpui-text-vs-sprites.md). Do not go back to per-glyph `paint_image`.
-3. ConPTY vertical junk: **later**, with wezterm-gui (018).
+3. **Come back later: measure with gpui-fps** (Ctrl+Shift+F). Stock HUD is *continuous* (how fast we can paint; window never idles). For typing/`dir` lag, watch **FRAME** with continuous *off* — that toggle is **not wired yet**. Hide HUD to idle.
+4. ConPTY vertical junk: **later**, with wezterm-gui (018).
 
 ## Feedback that helps
 
-Screenshots of “looks wrong” vs wezterm-gui (box lines, overflow glyphs, selection). Palette notes and isolated ConPTY-junk hunts are not useful for a while.
+FPS HUD is **off** until Ctrl+Shift+F. Screenshots of “looks wrong” vs wezterm-gui still help. Palette notes and isolated ConPTY-junk hunts are not useful for a while.
 
 ## Do not
 

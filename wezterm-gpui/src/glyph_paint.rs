@@ -22,8 +22,6 @@ struct GlyphKey {
     font_id: LoadedFontId,
     glyph_pos: u32,
     font_idx: usize,
-    /// 0 for color glyphs; otherwise 0xRRGGBB of the cell foreground.
-    fg: u32,
 }
 
 struct CachedGlyph {
@@ -31,8 +29,10 @@ struct CachedGlyph {
     height: u32,
     bearing_x: f64,
     bearing_y: f64,
-    /// RGBA, non-premultiplied.
+    /// Color emoji: straight RGBA. Text: wezterm-font coverage (RGB sRGB-encoded,
+    /// A linear) — tinted at blit so we match wezterm-gui, not `fg * alpha²`.
     data: Arc<Vec<u8>>,
+    has_color: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -80,8 +80,10 @@ pub struct TermPaint {
 }
 
 impl GlyphPainter {
-    pub fn new() -> anyhow::Result<Self> {
-        let fonts = Rc::new(FontConfiguration::new(None, 96)?);
+    pub fn new(dpi: u32) -> anyhow::Result<Self> {
+        let dpi = dpi.clamp(72, 384) as usize;
+        let config = config::configuration();
+        let fonts = Rc::new(FontConfiguration::new(Some(config), dpi)?);
         let _ = fonts.default_font()?;
         let _ = fonts.default_font_metrics()?;
         Ok(Self {
@@ -103,12 +105,26 @@ impl GlyphPainter {
 
     pub fn sync_font(&mut self, font_px: f32, dpi: u32) {
         let dpi = dpi.clamp(72, 384) as usize;
-        let scale = (font_px as f64 / 12.0).clamp(0.5, 4.0);
-        if (scale - self.fonts.get_font_scale()).abs() > 0.01 || dpi != self.fonts.get_dpi() {
-            self.fonts.change_scaling(scale, dpi);
-            self.glyphs.clear();
-            self.drain_rows();
+        let config = config::configuration();
+        let base = config.font_size.max(1.0);
+        let scale = (font_px as f64 / base).clamp(0.5, 4.0);
+        let scale_changed = (scale - self.fonts.get_font_scale()).abs() > 0.01;
+        let dpi_changed = dpi != self.fonts.get_dpi();
+        if !scale_changed && !dpi_changed {
+            return;
         }
+        if dpi_changed {
+            if let Ok(fonts) = FontConfiguration::new(Some(config), dpi) {
+                fonts.change_scaling(scale, dpi);
+                self.fonts = Rc::new(fonts);
+                self.glyphs.clear();
+                self.drain_rows();
+                return;
+            }
+        }
+        self.fonts.change_scaling(scale, dpi);
+        self.glyphs.clear();
+        self.drain_rows();
     }
 
     fn drain_rows(&mut self) {
@@ -315,9 +331,7 @@ impl GlyphPainter {
                         }
                         let (fr, fg_g, fb, _) = fg.as_rgba_u8();
                         let fg_u = pack_rgb(fr, fg_g, fb);
-                        if let Ok(glyph) =
-                            self.cached_glyph(font, info.glyph_pos, info.font_idx, fg_u)
-                        {
+                        if let Ok(glyph) = self.cached_glyph(font, info.glyph_pos, info.font_idx) {
                             let dx = (x_pos + info.x_offset.get() + glyph.bearing_x).round() as i32;
                             let dy = (cell_h + descender
                                 - (info.y_offset.get() + glyph.bearing_y))
@@ -331,6 +345,8 @@ impl GlyphPainter {
                                 glyph.width,
                                 glyph.height,
                                 &glyph.data,
+                                glyph.has_color,
+                                fg_u,
                             );
                         }
                         x_pos += info.x_advance.get();
@@ -340,6 +356,11 @@ impl GlyphPainter {
             }
         }
 
+        // GPUI RenderImage is BGRA (gpui::assets::RenderImage). image::Rgba is
+        // RGBA; without this swap Dracula #282a36 paints as brown #362a28.
+        for pixel in pixels.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
+        }
         let rgba = RgbaImage::from_raw(phys_w, phys_h, pixels)
             .ok_or_else(|| anyhow::anyhow!("row sprite size mismatch"))?;
         Ok(Arc::new(RenderImage::new(vec![Frame::new(rgba)])))
@@ -350,35 +371,24 @@ impl GlyphPainter {
         font: &LoadedFont,
         glyph_pos: u32,
         font_idx: usize,
-        fg: u32,
     ) -> anyhow::Result<Rc<CachedGlyph>> {
-        let tinted = GlyphKey {
-            font_id: font.id(),
-            glyph_pos,
-            font_idx,
-            fg,
-        };
-        if let Some(g) = self.glyphs.get(&tinted) {
-            return Ok(Rc::clone(g));
-        }
-        let raster: RasterizedGlyph = font.rasterize_glyph(glyph_pos, font_idx)?;
-        let key_fg = if raster.has_color { 0 } else { fg };
         let key = GlyphKey {
             font_id: font.id(),
             glyph_pos,
             font_idx,
-            fg: key_fg,
         };
         if let Some(g) = self.glyphs.get(&key) {
             return Ok(Rc::clone(g));
         }
-        let data = glyph_to_rgba(&raster, fg);
+        let raster: RasterizedGlyph = font.rasterize_glyph(glyph_pos, font_idx)?;
+        let data = glyph_coverage(&raster);
         let cached = Rc::new(CachedGlyph {
             width: raster.width.max(1) as u32,
             height: raster.height.max(1) as u32,
             bearing_x: raster.bearing_x.get(),
             bearing_y: raster.bearing_y.get(),
             data: Arc::new(data),
+            has_color: raster.has_color,
         });
         self.glyphs.insert(key, Rc::clone(&cached));
         Ok(cached)
@@ -490,7 +500,10 @@ fn blit_glyph(
     gw: u32,
     gh: u32,
     src: &[u8],
+    has_color: bool,
+    fg: u32,
 ) {
+    let (fr, fg_g, fb) = unpack_rgb(fg);
     for gy in 0..gh {
         let py = dy + gy as i32;
         if py < 0 || py >= img_h as i32 {
@@ -502,51 +515,73 @@ fn blit_glyph(
                 continue;
             }
             let si = ((gy * gw + gx) * 4) as usize;
-            let sa = src.get(si + 3).copied().unwrap_or(0) as u32;
+            let sa = src.get(si + 3).copied().unwrap_or(0);
             if sa == 0 {
                 continue;
             }
             let di = ((py as u32 * img_w + px as u32) * 4) as usize;
-            let inv = 255 - sa;
-            dest[di] = ((src[si] as u32 * sa + dest[di] as u32 * inv) / 255) as u8;
-            dest[di + 1] = ((src[si + 1] as u32 * sa + dest[di + 1] as u32 * inv) / 255) as u8;
-            dest[di + 2] = ((src[si + 2] as u32 * sa + dest[di + 2] as u32 * inv) / 255) as u8;
+            if has_color {
+                // Straight-alpha color emoji.
+                let inv = 255 - sa as u32;
+                dest[di] = ((src[si] as u32 * sa as u32 + dest[di] as u32 * inv) / 255) as u8;
+                dest[di + 1] =
+                    ((src[si + 1] as u32 * sa as u32 + dest[di + 1] as u32 * inv) / 255) as u8;
+                dest[di + 2] =
+                    ((src[si + 2] as u32 * sa as u32 + dest[di + 2] as u32 * inv) / 255) as u8;
+                dest[di + 3] = 255;
+                continue;
+            }
+            // wezterm-gui grayscale: out = sRGB_fg * linear_a + sRGB_bg * (1-linear_a).
+            // LCD: per-channel coverage (RGB is sRGB-encoded linear coverage).
+            let sr = src[si];
+            let sg = src[si + 1];
+            let sb = src[si + 2];
+            let (cr, cg, cb) = if sr == sg && sg == sb {
+                let c = sa as f32 / 255.0;
+                (c, c, c)
+            } else {
+                (
+                    srgb8_to_linear(sr),
+                    srgb8_to_linear(sg),
+                    srgb8_to_linear(sb),
+                )
+            };
+            dest[di] = lerp_u8(dest[di], fr, cr);
+            dest[di + 1] = lerp_u8(dest[di + 1], fg_g, cg);
+            dest[di + 2] = lerp_u8(dest[di + 2], fb, cb);
             dest[di + 3] = 255;
         }
     }
 }
 
-fn glyph_to_rgba(raster: &RasterizedGlyph, fg: u32) -> Vec<u8> {
-    let w = raster.width.max(1) as u32;
-    let h = raster.height.max(1) as u32;
-    let fr = ((fg >> 16) & 0xff) as u32;
-    let fg_g = ((fg >> 8) & 0xff) as u32;
-    let fb = (fg & 0xff) as u32;
-    let mut pixels = vec![0u8; (w * h * 4) as usize];
+fn glyph_coverage(raster: &RasterizedGlyph) -> Vec<u8> {
+    let w = raster.width.max(1) as usize;
+    let h = raster.height.max(1) as usize;
+    let mut pixels = vec![0u8; w * h * 4];
     if raster.width > 0 && raster.height > 0 {
+        let row_bytes = raster.width * 4;
         for gy in 0..raster.height {
-            for gx in 0..raster.width {
-                let si = (gy * raster.width + gx) * 4;
-                let sa = raster.data.get(si + 3).copied().unwrap_or(0) as u32;
-                if sa == 0 {
-                    continue;
-                }
-                let (sr, sg, sb) = if raster.has_color {
-                    (
-                        raster.data[si] as u32,
-                        raster.data[si + 1] as u32,
-                        raster.data[si + 2] as u32,
-                    )
-                } else {
-                    (fr * sa / 255, fg_g * sa / 255, fb * sa / 255)
-                };
-                let di = ((gy as u32 * w + gx as u32) * 4) as usize;
-                pixels[di] = sr.min(255) as u8;
-                pixels[di + 1] = sg.min(255) as u8;
-                pixels[di + 2] = sb.min(255) as u8;
-                pixels[di + 3] = sa.min(255) as u8;
+            let src = gy * row_bytes;
+            let dst = gy * w * 4;
+            let n = row_bytes.min(w * 4);
+            if src + n <= raster.data.len() && dst + n <= pixels.len() {
+                pixels[dst..dst + n].copy_from_slice(&raster.data[src..src + n]);
             }
         }
     }
     pixels
+}
+
+fn lerp_u8(bg: u8, fg: u8, t: f32) -> u8 {
+    (bg as f32 * (1.0 - t) + fg as f32 * t).round().clamp(0.0, 255.0) as u8
+}
+
+/// Inverse of wezterm-font `linear_u8_to_srgb8` (coverage stored as sRGB).
+fn srgb8_to_linear(c: u8) -> f32 {
+    let x = c as f32 / 255.0;
+    if x <= 0.04045 {
+        x / 12.92
+    } else {
+        ((x + 0.055) / 1.055).powf(2.4)
+    }
 }
