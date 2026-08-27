@@ -1,0 +1,6 @@
+{
+  "id": "014-external-gpui-terminals",
+  "at": "2026-08-27T00:15:00Z",
+  "decision": "keep_external_gpui_terminals_as_docs_not_deps",
+  "rationale": "gpui-terminal (MIT OR Apache-2.0) and tty7 (Apache-2.0) are useful GPUI terminal references. Clone them to D:\\dev (outside this repo). Do not path-dep them, do not switch to alacritty_terminal, do not take crates.io gpui 0.2.2 or tty7's Zed/gpui-component forks. Findings live in docs/reference/. Zed terminal_element.rs is GPL-3.0-or-later: read for ideas, never copy. Paint/resize code in wezterm-gpui is unchanged until an item is picked from docs/reference/steal-list.md."
+}

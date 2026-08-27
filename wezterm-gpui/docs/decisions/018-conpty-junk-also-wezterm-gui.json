@@ -1,0 +1,6 @@
+{
+  "id": "018-conpty-junk-also-wezterm-gui",
+  "at": "2026-08-27T02:20:00Z",
+  "decision": "conpty_vertical_junk_is_later_polish",
+  "rationale": "User 2026-08-26: official wezterm-gui also generates vertical junk on resize, so it is not an isolated GPUI problem. Do not spend a GPUI session on it. Revisit as a shared ConPTY/reflow polish later (possibly with wezterm-gui)."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "015-next-is-scrollback",
+  "at": "2026-08-27T00:25:00Z",
+  "decision": "next_slice_is_scrollback_viewport",
+  "rationale": "User: start supporting scrolling the terminal. Mux already has scrollback; TermPane paints only physical_top. GUI-owned StableRowIndex viewport like wezterm-gui (not alacritty display_offset, not gpui-terminal's empty on_scroll). Live PTY resize (013) and GPUI-text vs sprites stay open questions to re-evaluate later (docs/reference/open-questions.md), not this slice."
+}

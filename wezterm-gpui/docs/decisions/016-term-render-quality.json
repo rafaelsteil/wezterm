@@ -1,0 +1,6 @@
+{
+  "id": "016-term-render-quality",
+  "at": "2026-08-27T01:20:00Z",
+  "decision": "main_goal_is_term_paint_not_chrome",
+  "rationale": "User 2026-08-26: palette/charselect is not a concern for a while; terminal/shell rendering has to be good or the rest does not matter. Park chrome polish. First paint slice: wezterm-font raster at window scale_factor (not hardcoded dpi 96), snap quads/sprites to device pixels, and one ConPTY Pane::resize after the view grid is unchanged for ~450ms. Do not ResizePseudoConsole on every prepaint (013 still holds for live drag). Do not start a GPUI text_system rewrite in this slice."
+}

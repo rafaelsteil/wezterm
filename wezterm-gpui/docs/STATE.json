@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-26T23:55:00Z",
+  "updated": "2026-08-27T02:56:00Z",
   "status": "in_progress",
-  "current_phase": "poc-chrome",
+  "current_phase": "poc-term-render",
   "next": [
     {
-      "id": "user-try-mux-cmd-exe",
-      "action": "Resize try succeeded 2026-08-26 (decision 013). Next smallest chrome: character selector overlay or palette keyboard polish. GPU atlas Element later. Do not start window/ cutover unless asked.",
+      "id": "term-render-visual-leftovers",
+      "action": "017 paint feel user-ok 2026-08-26. Next: visual leftovers vs wezterm-gui (box-draw, clip, selection) if they still get in the way. Do not start GPUI text unless paint feels slow again. ConPTY junk later (018). Palette parked. Workstream: docs/reference/rendering-quality.md.",
       "blocked_by": []
     },
     {
@@ -54,8 +54,13 @@
     },
     {
       "id": "poc-chrome",
+      "status": "done",
+      "notes": "Chrome is usable enough. Confirm/prompt done. Mux LocalPane cmd.exe user-tried. User parked palette/charselect 2026-08-26; main goal is term paint."
+    },
+    {
+      "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Chrome still evolving. Confirm/prompt done. Mux LocalPane cmd.exe user-tried. Paint is wezterm-font sprite cache. Live resize is display-only after first PTY size (decision 013); user confirmed no cursor-column junk 2026-08-26. Debug colfill/debounce stripped. Next: charselect or palette keyboard."
+      "notes": "Decision 016: rendering quality is the POC goal. 120dpi user-ok. 017 line sprites user-ok (“much better”). ConPTY junk also in wezterm-gui (018) — later polish. Next: visual leftovers vs wezterm-gui. See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -85,7 +90,17 @@
     {
       "id": "terminal-element",
       "status": "pending",
-      "notes": "GPU glyph atlas as a custom GPUI Element. POC currently CPU-composites wezterm-font bitmaps into one RenderImage per frame."
+      "notes": "GPU glyph atlas as a custom GPUI Element. POC currently cached wezterm-font sprites + quads at window DPI. tty7 element.rs is the closest Apache-licensed GPUI Element reference (docs/reference/tty7.md). Workstream: docs/reference/rendering-quality.md."
+    },
+    {
+      "id": "scrollback-viewport",
+      "status": "done",
+      "notes": "User-tried 2026-08-26: wheel scrolls history, typing snaps to live. Performance questionable (reshape/sprites every frame); defer. No scrollbar widget."
+    },
+    {
+      "id": "external-gpui-terminal-eval",
+      "status": "done",
+      "notes": "Cloned D:\\dev\\gpui-terminal and D:\\dev\\tty7. Notes in docs/reference/. Open questions: live PTY resize, GPUI text vs sprites. No path deps, no paint rewrite."
     },
     {
       "id": "delete-old-ui",
@@ -181,6 +196,36 @@
       "decision": "gpui_live_resize_skips_conpty",
       "rationale": "User: few pixels of width changed colfill 16→12 and junk remained. One ConPTY col change is enough. After first PTY size, live resize is terminal.resize only (Pane::resize_display). wezterm-gui still uses resize().",
       "record": "docs/decisions/013-display-rewrap-without-conpty.json"
+    },
+    {
+      "at": "2026-08-27T00:15:00Z",
+      "decision": "keep_external_gpui_terminals_as_docs_not_deps",
+      "rationale": "gpui-terminal and tty7 are Apache-licensed GPUI terminal references. Keep as D:\\dev checkouts + docs/reference/. Do not depend, do not switch VT core, do not copy Zed GPL terminal_element.rs. Paint unchanged until steal-list pick.",
+      "record": "docs/decisions/014-external-gpui-terminals.json"
+    },
+    {
+      "at": "2026-08-27T00:25:00Z",
+      "decision": "next_slice_is_scrollback_viewport",
+      "rationale": "User: start supporting scrolling. Mux has scrollback; TermPane paints physical_top only. Live PTY resize and GPUI-text stay open questions, not this slice.",
+      "record": "docs/decisions/015-next-is-scrollback.json"
+    },
+    {
+      "at": "2026-08-27T01:20:00Z",
+      "decision": "main_goal_is_term_paint_not_chrome",
+      "rationale": "User: palette is not a concern; terminal/shell rendering has to be good or the rest does not matter. DPI from scale_factor, device-pixel snap, committed ConPTY after stable grid. Drag still skips ConPTY (013).",
+      "record": "docs/decisions/016-term-render-quality.json"
+    },
+    {
+      "at": "2026-08-27T02:20:00Z",
+      "decision": "paint_rows_not_glyphs_and_coalesce_mux",
+      "rationale": "User: major issue is paint lag vs wezterm-gui (typing especially). Per-glyph paint_image + reshape-all-lines every PaneOutput. Cache one RenderImage per line; drain mux notifies.",
+      "record": "docs/decisions/017-line-sprites-and-coalesce.json"
+    },
+    {
+      "at": "2026-08-27T02:20:00Z",
+      "decision": "conpty_vertical_junk_is_later_polish",
+      "rationale": "User: official wezterm-gui also generates vertical junk. Not a GPUI-only bug; do not spend a GPUI session on it.",
+      "record": "docs/decisions/018-conpty-junk-also-wezterm-gui.json"
     }
   ],
   "constraints": [
@@ -237,13 +282,19 @@
       "status": "poc_text_paint",
       "legacy": "mux LocalDomain::spawn_pane + LocalPane (wezterm-gui uses this, then glyph-paints)",
       "gpui": "wezterm-gpui/src/mux_host.rs + term_pane.rs",
-      "e2e": "user-tried 2026-08-26 cmd.exe + wezterm-font sprites; ConPTY live-resize junk gone after display-only rewrap (decision 013); colfill 1 wide / 7 narrow is wrap occupancy not smear"
+      "e2e": "user-tried 2026-08-26 cmd.exe; 120dpi ok; 017 line sprites “much better” (typing/dir/scroll)"
+    },
+    "scrollback_viewport": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui pane_state.viewport + scroll_by_line",
+      "gpui": "wezterm-gpui/src/term_pane.rs viewport + on_scroll_wheel",
+      "e2e": "user-tried 2026-08-26: wheel history, type snaps to live; 017 paint feel later user-ok"
     },
     "wezterm_font_sys_freetype": {
       "status": "wired_cpu_composite",
       "legacy": "wezterm-font + deps/freetype + harfbuzz vendored FT",
       "gpui": "wezterm-gpui/src/glyph_paint.rs; wezterm-font features sys-freetype + vendor-jetbrains; deps/freetype-from-sys; harfbuzz sys-freetype; freetype-sys 0.20.1",
-      "e2e": "user-tried 2026-08-26; vendor-jetbrains required; viewport bitmap black on shrink-grow; sprite cache + display-only resize user-ok (no D/a column)"
+      "e2e": "user-tried 2026-08-26; 120dpi ok; per-glyph too slow; 017 line sprites user-ok (“much better”)"
     }
   },
   "findings": [
@@ -366,6 +417,51 @@
       "at": "2026-08-26T23:55:00Z",
       "id": "stripped_resize_debug_after_013",
       "detail": "Removed colfill/cell-px status, pty-resize eprintln, and 200ms first-size debounce. Live ConPTY is gone so debounce was leftover; first valid (>=2 cell) layout resizes the PTY immediately, later layouts are resize_display only."
+    },
+    {
+      "at": "2026-08-27T00:15:00Z",
+      "id": "external_gpui_terminals_eval",
+      "detail": "Cloned zortax/gpui-terminal@51f02929 (MIT OR Apache-2.0, gpui 0.2.2, canvas+live PTY resize, per-cell shape_line despite unused BatchedTextRun) and l0ng-ai/tty7@d4b8e331 (Apache-2.0, custom Element, batched shape_line+force_width+mask, live daemon resize with echo-deferred reflow, Windows GPUI italic-fallback fork). Zed terminal_element.rs is GPL-3 — ideas only. Both use alacritty_terminal; we keep mux+wezterm-term. Notes: docs/reference/."
+    },
+    {
+      "at": "2026-08-27T00:25:00Z",
+      "id": "live_pty_resize_reeval_later",
+      "detail": "tty7/Zed/gpui-terminal live-resize PTY because children need ws_col and (tty7) ws_xpixel. Unix SIGWINCH does not rewrite the screen; ConPTY ResizePseudoConsole does. tty7 defers grid reflow until daemon size echo — they know naive live resize garbles. wezterm-gui lives-resizes because Win32 snaps to cells. Keep 013; re-eval when cell-snap, mouse-up ConPTY, echo/drain, or Unix. docs/reference/open-questions.md."
+    },
+    {
+      "at": "2026-08-27T00:25:00Z",
+      "id": "gpui_text_vs_sprites_dig_later",
+      "detail": "Native text is how they avoid owning a glyph atlas (GPUI owns it). Sprites keep wezterm-font/HarfBuzz identity. Spike later behind a flag on Windows (italic CJK mojibake, emoji, shrink-grow). Hybrid ASCII+sprites is a trap. docs/reference/gpui-text-vs-sprites.md."
+    },
+    {
+      "at": "2026-08-27T00:40:00Z",
+      "id": "scrollback_viewport_wired",
+      "detail": "TermPane.viewport Option<StableRowIndex> like wezterm-gui. visible_lines uses paint_top. Wheel on pane div: mouse-grabbed or alt-screen → Pane::mouse_event WheelUp/Down; else scroll_by_line(-y). key_down and clear_scrollback pin to bottom. cargo check green. User-tried 2026-08-26: works. Performance questionable (likely HarfBuzz+sprite layout every wheel frame); in-scope for rendering-quality later, not this 016 slice."
+    },
+    {
+      "at": "2026-08-27T01:20:00Z",
+      "id": "user_parked_palette_term_paint_is_goal",
+      "detail": "User: palette is not a concern for a while; main goal is terminal/shell rendering. HANDOFF next (charselect/palette) was stale. First slice 016: wezterm-font at window scale_factor, snap quads/sprites to device pixels, one ConPTY resize after ~450ms stable view grid. Drag still resize_display only."
+    },
+    {
+      "at": "2026-08-27T02:15:00Z",
+      "id": "dpi_120_user_ok",
+      "detail": "User try after 016: status 120dpi, looks correct."
+    },
+    {
+      "at": "2026-08-27T02:15:00Z",
+      "id": "conpty_junk_also_in_wezterm_gui",
+      "detail": "User: official wezterm-gui also generates vertical junk on resize. Not isolated to GPUI. Decision 018: later polish, possibly with wezterm-gui. Do not chase in the GPUI paint session."
+    },
+    {
+      "at": "2026-08-27T02:15:00Z",
+      "id": "paint_lag_vs_wezterm_gui",
+      "detail": "User: GPUI renders slower than wezterm-gui overall — dir /a, scroll, especially typing. Cause: HarfBuzz every visible line + paint_image per glyph every PaneOutput (and extra notifies). 017: per-line cached RenderImage, drain mux channel, skip layout if seqno/viewport/cursor unchanged. Still a debug binary vs official release."
+    },
+    {
+      "at": "2026-08-27T02:56:00Z",
+      "id": "line_sprites_user_ok",
+      "detail": "User retry after 017: “yah, much better now.” Line-sprite paint + mux coalesce is good enough for now. Do not start a GPUI text_system rewrite unless lag comes back. Next rendering work is visual leftovers vs wezterm-gui if they still get in the way."
     }
   ],
   "blockers": [],
@@ -378,6 +474,10 @@
     "user_try": "yes",
     "live_pty_text_paint": "superseded_by_mux",
     "mux_cmd_exe_text_paint": "user_tried",
-    "wezterm_font_sys_freetype": "sprite_cache_display_rewrap_user_ok"
+    "wezterm_font_sys_freetype": "line_sprites_017_user_ok",
+    "external_gpui_terminals": "docs_only_not_deps",
+    "scrollback_viewport": "user_ok",
+    "palette_charselect": "parked",
+    "conpty_vertical_junk": "also_in_wezterm_gui_polish_later"
   }
 }

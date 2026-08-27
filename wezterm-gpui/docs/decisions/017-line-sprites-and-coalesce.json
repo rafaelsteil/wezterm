@@ -1,0 +1,6 @@
+{
+  "id": "017-line-sprites-and-coalesce",
+  "at": "2026-08-27T02:20:00Z",
+  "decision": "paint_rows_not_glyphs_and_coalesce_mux",
+  "rationale": "User 2026-08-26: 120dpi looks correct. Vertical ConPTY junk also happens in official wezterm-gui — polish later, not GPUI-only. Major issue is paint lag (dir /a, scroll, especially typing) vs wezterm-gui. Cause: every PaneOutput reshaped the whole viewport and paint_image'd every glyph. POC now caches one RenderImage per unique line (stable ImageId while the line is unchanged; not a viewport bitmap — 010) and drains mux notifications so a burst is one notify. Still debug vs official release; still not the wezterm-gui GPU atlas. GPUI text_system remains a later option if this is not enough."
+}
