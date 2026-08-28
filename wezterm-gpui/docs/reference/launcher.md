@@ -14,14 +14,14 @@ wezterm-gui **Launcher** is a termwiz overlay (`wezterm-gui/src/overlay/launcher
 
 That dump is why the menu feels like a second command palette. **Do not clone it.** Unique work is domain/workspace/`launch_menu` spawn — those are mux calls once the domains exist.
 
-GPUI already has the 027 Plus+chevron (cmd / PowerShell). **049:** `ShowLauncher` / `ShowTabNavigator` are a searchable `Picker` (shells, lua `launch_menu`, splits, new window, tabs). Not a termwiz dump of COMMANDS+KEY_ASSIGNMENTS.
+GPUI already has the 027 Plus+chevron (cmd / PowerShell / **053 WSL**). **049:** `ShowLauncher` / `ShowTabNavigator` are a searchable `Picker` (shells, lua `launch_menu`, splits, new window, tabs). **053** adds mux domain rows. Not a termwiz dump of COMMANDS+KEY_ASSIGNMENTS.
 
 ## Screenshot buckets (2026-08-27)
 
 | Row | Kind | GPUI |
 |---|---|---|
 | New Tab (domain `local`) | `call_core` | Wired as Plus / palette New Tab |
-| New Tab (domain `WSL:…`) | `call_core` | `needs_mux` — register WslDomain |
+| New Tab (domain `WSL:…`) | `call_core` | **053 wired** — `LocalDomain::new_wsl`; needs user-try |
 | Attach domain `unix` | `call_core` | `needs_mux` — Unix domain |
 | Create new Workspace | `call_core` | `needs_mux` |
 | Reload configuration | `call_core` | Wired (049) |
@@ -31,6 +31,6 @@ GPUI already has the 027 Plus+chevron (cmd / PowerShell). **049:** `ShowLauncher
 ## Do not start unless asked
 
 - A GPUI replica of the termwiz COMMANDS+KEY_ASSIGNMENTS dump
-- Registering WSL / unix domains
+- Unix domain attach (`wezterm-client`)
 - Workspaces
 - `augment-command-palette`

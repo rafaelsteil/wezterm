@@ -1,0 +1,7 @@
+{
+  "id": "053-mux-wsl-domains",
+  "at": "2026-08-28T18:20:00Z",
+  "decision": "register_wsl_and_exec_localdomains_like_wezterm_gui",
+  "rationale": "User asked to launch machine-registered shells (WSL). Same LocalDomain::new_wsl path as wezterm-gui update_mux_domains. List them on the 027 chevron, ShowLauncher, and palette. Plus/Ctrl+T stay cmd.exe. Do not take wezterm-client unix/SSH attach. Do not start 026/031.",
+  "record": "docs/plans/053-mux-wsl-domains.md"
+}

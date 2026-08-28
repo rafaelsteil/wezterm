@@ -1,28 +1,43 @@
 //! Built-in local shell profiles for the GPUI new-tab menu.
 //!
 //! Plus / Ctrl+T still spawn the first profile (Command Prompt / `%ComSpec%`).
-//! The chevron lists that plus Windows PowerShell, and PowerShell 7 (`pwsh`)
-//! when it is installed. Lua `default_prog` / `launch_menu` stay out (020).
+//! The chevron lists that plus Windows PowerShell, PowerShell 7 (`pwsh`) when
+//! it is installed, and mux domains from `mux_host::launch_profiles` (WSL, 053).
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 
 use portable_pty::CommandBuilder;
 
-/// A spawnable local program shown in the new-tab dropdown.
+/// A spawnable local program or mux domain shown in the new-tab dropdown.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ShellProfile {
-    pub id: &'static str,
+    pub id: String,
     pub label: String,
-    /// `None` means `CommandBuilder::new_default_prog()` (non-Windows fallback).
+    /// `None` for local default_prog, or for a mux domain's own default.
+    /// When `domain` is set and this is `Some`, those args become `wsl --exec`.
     pub argv: Option<Vec<OsString>>,
+    /// Mux domain name (`WSL:Ubuntu`, …). `None` is the default local domain.
+    pub domain: Option<String>,
 }
 
 impl ShellProfile {
-    pub fn command(&self) -> CommandBuilder {
+    pub fn mux_domain(name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self {
+            id: name.clone(),
+            label: name.clone(),
+            argv: None,
+            domain: Some(name),
+        }
+    }
+
+    /// `None` when a mux domain should use its own default command (WSL).
+    pub fn command(&self) -> Option<CommandBuilder> {
         match &self.argv {
-            Some(argv) => CommandBuilder::from_argv(argv.clone()),
-            None => CommandBuilder::new_default_prog(),
+            Some(argv) => Some(CommandBuilder::from_argv(argv.clone())),
+            None if self.domain.is_some() => None,
+            None => Some(CommandBuilder::new_default_prog()),
         }
     }
 }
@@ -56,13 +71,14 @@ fn command_prompt() -> ShellProfile {
     #[cfg(not(windows))]
     let argv = None;
     ShellProfile {
-        id: "cmd",
+        id: "cmd".into(),
         label: if cfg!(windows) {
             "Command Prompt".into()
         } else {
             "Default shell".into()
         },
         argv,
+        domain: None,
     }
 }
 
@@ -78,9 +94,10 @@ fn windows_powershell() -> ShellProfile {
         .filter(|p| p.is_file())
         .unwrap_or_else(|| PathBuf::from("powershell.exe"));
     ShellProfile {
-        id: "powershell",
+        id: "powershell".into(),
         label: "Windows PowerShell".into(),
         argv: Some(vec![exe.into()]),
+        domain: None,
     }
 }
 
@@ -88,9 +105,10 @@ fn windows_powershell() -> ShellProfile {
 fn powershell_core() -> Option<ShellProfile> {
     let exe = pwsh_candidates().into_iter().find(|p| p.is_file())?;
     Some(ShellProfile {
-        id: "pwsh",
+        id: "pwsh".into(),
         label: "PowerShell".into(),
         argv: Some(vec![exe.into()]),
+        domain: None,
     })
 }
 
@@ -137,6 +155,7 @@ mod tests {
         assert!(!shells.is_empty());
         assert_eq!(shells[0].id, "cmd");
         assert_eq!(default_shell().id, "cmd");
+        assert!(shells[0].domain.is_none());
     }
 
     #[cfg(windows)]
@@ -157,5 +176,13 @@ mod tests {
                 .contains("powershell"),
             "argv={argv:?}"
         );
+    }
+
+    #[test]
+    fn mux_domain_profile_has_no_local_command() {
+        let p = ShellProfile::mux_domain("WSL:Ubuntu");
+        assert_eq!(p.id, "WSL:Ubuntu");
+        assert_eq!(p.domain.as_deref(), Some("WSL:Ubuntu"));
+        assert!(p.command().is_none());
     }
 }

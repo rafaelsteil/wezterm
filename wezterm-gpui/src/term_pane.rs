@@ -138,7 +138,7 @@ impl TermPane {
                 None
             }
         };
-        match spawn_live(profile.command(), cx) {
+        match spawn_live(&profile, cx) {
             Ok(live) => Self {
                 live: Ok(live),
                 font_px,
@@ -1636,7 +1636,7 @@ fn line_around(pane: &dyn Pane, pos: CellPos) -> SelRange {
 }
 
 fn spawn_live(
-    cmd: portable_pty::CommandBuilder,
+    profile: &ShellProfile,
     cx: &mut Context<TermPane>,
 ) -> anyhow::Result<LiveMux> {
     let size = TerminalSize {
@@ -1646,7 +1646,11 @@ fn spawn_live(
         pixel_height: DEFAULT_ROWS * 16,
         dpi: 96,
     };
-    let pane = crate::mux_host::spawn_command(size, cmd)?;
+    let pane = crate::mux_host::spawn_in_domain(
+        size,
+        profile.domain.as_deref(),
+        profile.command(),
+    )?;
     let pane_id = pane.pane_id();
     let alive = Arc::new(AtomicBool::new(true));
     let (tx, rx) = async_channel::unbounded::<()>();

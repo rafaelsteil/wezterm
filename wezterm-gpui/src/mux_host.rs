@@ -8,18 +8,20 @@
 //! in `glyph_paint.rs` (Consolas text fallback in `term_pane.rs`).
 //!
 //! Lua config is loaded (decision 020, 034). Plus / Ctrl+T still spawn Command
-//! Prompt (`%ComSpec%`); the new-tab chevron can spawn PowerShell (027).
-//! Lua `default_prog` / `launch_menu` stay unused. Tab chrome + user
-//! `mouse_bindings` (Ctrl+click link, Ctrl+wheel page) are 034.
+//! Prompt (`%ComSpec%`); the new-tab chevron can spawn PowerShell (027) and
+//! mux WSL/exec domains (053). Tab chrome + user `mouse_bindings` (Ctrl+click
+//! link, Ctrl+wheel page) are 034.
 
 use std::sync::{Arc, OnceLock};
 
 use anyhow::Context as _;
 use mux::Mux;
-use mux::domain::{Domain, LocalDomain};
+use mux::domain::{Domain, DomainState, LocalDomain};
 use mux::pane::Pane;
 use portable_pty::CommandBuilder;
 use wezterm_term::TerminalSize;
+
+use crate::shells::ShellProfile;
 
 static INIT: OnceLock<Result<(), String>> = OnceLock::new();
 
@@ -119,14 +121,101 @@ fn init_inner() -> anyhow::Result<()> {
     let domain: Arc<dyn Domain> = Arc::new(LocalDomain::new("local").context("LocalDomain::new")?);
     let mux = Arc::new(Mux::new(Some(Arc::clone(&domain))));
     Mux::set_mux(&mux);
+    register_configured_domains();
     Ok(())
 }
 
-/// Spawn `cmd` through mux `LocalDomain` (same host wezterm-gui uses:
-/// ConPTY + `wezterm-term` inside `LocalPane`).
-pub fn spawn_command(size: TerminalSize, cmd: CommandBuilder) -> anyhow::Result<Arc<dyn Pane>> {
+/// Register lua/`wsl -l` domains that wezterm-gui adds in `update_mux_domains`.
+/// WSL is `LocalDomain::new_wsl` (same ConPTY host, `wsl.exe --distribution`).
+/// Skip unix/SSH/TLS clients (need `wezterm-client`) and serial ports.
+pub fn register_configured_domains() {
+    let Some(mux) = Mux::try_get() else {
+        return;
+    };
+    let cfg = config::configuration();
+    for wsl in cfg.wsl_domains() {
+        if wsl.name.is_empty() || mux.get_domain_by_name(&wsl.name).is_some() {
+            continue;
+        }
+        match LocalDomain::new_wsl(wsl.clone()) {
+            Ok(domain) => {
+                let domain: Arc<dyn Domain> = Arc::new(domain);
+                mux.add_domain(&domain);
+                eprintln!("wezterm-gpui domain: {}", wsl.name);
+            }
+            Err(err) => eprintln!("wezterm-gpui domain {}: {err:#}", wsl.name),
+        }
+    }
+    for exec in &cfg.exec_domains {
+        if exec.name.is_empty() || mux.get_domain_by_name(&exec.name).is_some() {
+            continue;
+        }
+        match LocalDomain::new_exec_domain(exec.clone()) {
+            Ok(domain) => {
+                let domain: Arc<dyn Domain> = Arc::new(domain);
+                mux.add_domain(&domain);
+                eprintln!("wezterm-gpui domain: {}", exec.name);
+            }
+            Err(err) => eprintln!("wezterm-gpui exec domain {}: {err:#}", exec.name),
+        }
+    }
+}
+
+/// Local shells (027) plus attached spawnable mux domains (WSL, exec, …).
+/// Plus / Ctrl+T still use the first local profile (Command Prompt).
+pub fn launch_profiles() -> Vec<ShellProfile> {
+    let _ = ensure_init();
+    let mut out = crate::shells::available_shells();
+    out.extend(spawnable_domain_profiles());
+    out
+}
+
+/// Mux domains other than `local` that can `spawn_pane` today.
+pub fn spawnable_domain_profiles() -> Vec<ShellProfile> {
+    let _ = ensure_init();
+    let Some(mux) = Mux::try_get() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for dom in mux.iter_domains() {
+        if !dom.spawnable() || dom.state() != DomainState::Attached {
+            continue;
+        }
+        let name = dom.domain_name();
+        if name == "local" || name.is_empty() {
+            continue;
+        }
+        out.push(ShellProfile::mux_domain(name));
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
+/// Spawn through mux. `domain` `None` is the default (`local`). `cmd` `None`
+/// lets the domain build its default (WSL: `wsl.exe --distribution …`).
+pub fn spawn_in_domain(
+    size: TerminalSize,
+    domain: Option<&str>,
+    cmd: Option<CommandBuilder>,
+) -> anyhow::Result<Arc<dyn Pane>> {
     ensure_init()?;
-    let domain = Mux::get().default_domain();
-    promise::spawn::block_on(domain.spawn_pane(size, Some(cmd), None))
-        .context("LocalDomain::spawn_pane")
+    let mux = Mux::get();
+    let host = match domain {
+        Some(name) => mux
+            .get_domain_by_name(name)
+            .with_context(|| format!("mux domain `{name}` is not registered"))?,
+        None => mux.default_domain(),
+    };
+    promise::spawn::block_on(host.spawn_pane(size, cmd, None)).with_context(|| {
+        format!(
+            "{}::spawn_pane",
+            domain.unwrap_or_else(|| host.domain_name())
+        )
+    })
+}
+
+/// Spawn `cmd` through the default mux domain (local cmd.exe / PowerShell).
+#[allow(dead_code)]
+pub fn spawn_command(size: TerminalSize, cmd: CommandBuilder) -> anyhow::Result<Arc<dyn Pane>> {
+    spawn_in_domain(size, None, Some(cmd))
 }

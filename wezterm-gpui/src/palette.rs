@@ -9,8 +9,35 @@ use gpui_component::{
 use crate::commands::{PALETTE_COMMANDS, PaletteCommand};
 
 pub enum PaletteEvent {
-    Executed(&'static str),
+    Executed(String),
     Dismissed,
+}
+
+#[derive(Clone)]
+struct PaletteRow {
+    id: String,
+    brief: String,
+    doc: String,
+    menubar: String,
+    keys: String,
+    wired: bool,
+}
+
+impl PaletteRow {
+    fn from_static(cmd: &'static PaletteCommand) -> Self {
+        Self {
+            id: cmd.id.to_string(),
+            brief: cmd.brief.to_string(),
+            doc: cmd.doc.to_string(),
+            menubar: cmd.menubar.to_string(),
+            keys: cmd.keys.to_string(),
+            wired: cmd.is_wired(),
+        }
+    }
+
+    fn haystack(&self) -> String {
+        format!("{} {} {} {}", self.menubar, self.brief, self.doc, self.keys)
+    }
 }
 
 pub struct CommandPalette {
@@ -75,9 +102,9 @@ impl CommandPalette {
     }
 
     pub fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let cmd = self.filtered(cx).get(self.selected).copied();
+        let cmd = self.filtered(cx).get(self.selected).cloned();
         if let Some(cmd) = cmd {
-            self.run(cmd, window, cx);
+            self.run(&cmd, window, cx);
         }
     }
 
@@ -86,27 +113,42 @@ impl CommandPalette {
         cx.notify();
     }
 
-    fn filtered(&self, cx: &App) -> Vec<&'static PaletteCommand> {
+    fn all_rows() -> Vec<PaletteRow> {
+        let mut rows: Vec<_> = PALETTE_COMMANDS.iter().map(PaletteRow::from_static).collect();
+        for profile in crate::mux_host::spawnable_domain_profiles() {
+            rows.push(PaletteRow {
+                id: format!("domain:{}", profile.id),
+                brief: format!("New Tab (Domain {})", profile.label),
+                doc: format!("Spawn a tab in mux domain {}", profile.id),
+                menubar: "Shell".into(),
+                keys: String::new(),
+                wired: true,
+            });
+        }
+        rows
+    }
+
+    fn filtered(&self, cx: &App) -> Vec<PaletteRow> {
         let q = self.query.read(cx).value().to_lowercase();
-        PALETTE_COMMANDS
-            .iter()
+        Self::all_rows()
+            .into_iter()
             .filter(|cmd| q.is_empty() || cmd.haystack().to_lowercase().contains(&q))
             .collect()
     }
 
-    fn run(&mut self, cmd: &'static PaletteCommand, _window: &mut Window, cx: &mut Context<Self>) {
-        if !cmd.is_wired() {
-            self.last_ran = Some(format!(
-                "Not yet implemented ({:?}): {}",
-                cmd.kind, cmd.brief
-            ));
-            println!("wezterm-gpui palette listed (not wired): {} ({})", cmd.id, cmd.brief);
+    fn run(&mut self, cmd: &PaletteRow, _window: &mut Window, cx: &mut Context<Self>) {
+        if !cmd.wired {
+            self.last_ran = Some(format!("Not yet implemented: {}", cmd.brief));
+            println!(
+                "wezterm-gpui palette listed (not wired): {} ({})",
+                cmd.id, cmd.brief
+            );
             cx.notify();
             return;
         }
-        self.last_ran = Some(cmd.brief.to_string());
+        self.last_ran = Some(cmd.brief.clone());
         println!("wezterm-gpui palette: {} ({})", cmd.id, cmd.brief);
-        cx.emit(PaletteEvent::Executed(cmd.id));
+        cx.emit(PaletteEvent::Executed(cmd.id.clone()));
         cx.notify();
     }
 }
@@ -121,7 +163,7 @@ impl Render for CommandPalette {
         };
         let status = self.last_ran.clone().unwrap_or_else(|| {
             let n = matches.len();
-            let wired = matches.iter().filter(|c| c.is_wired()).count();
+            let wired = matches.iter().filter(|c| c.wired).count();
             format!(
                 "{n} commands · {wired} wired · dimmed = not yet · ↑↓ select · Enter run · Esc close"
             )
@@ -164,7 +206,7 @@ impl Render for CommandPalette {
                     .gap_1()
                     .children(matches.into_iter().enumerate().map(|(ix, cmd)| {
                         let is_sel = ix == selected;
-                        let wired = cmd.is_wired();
+                        let wired = cmd.wired;
                         let row_bg = if is_sel { palette_fg } else { palette_bg };
                         let row_fg = if is_sel { palette_bg } else { palette_fg };
                         let doc_fg = if is_sel {
@@ -173,6 +215,8 @@ impl Render for CommandPalette {
                             cx.theme().muted_foreground
                         };
                         let title = format!("{}: {}", cmd.menubar, cmd.brief);
+                        let keys = cmd.keys.clone();
+                        let doc = cmd.doc.clone();
                         div()
                             .id(("cmd", ix as u64))
                             .w_full()
@@ -183,7 +227,7 @@ impl Render for CommandPalette {
                             .bg(row_bg)
                             .when(wired, |s| s.cursor_pointer())
                             .on_click(cx.listener(move |this, _, window, cx| {
-                                this.run(cmd, window, cx);
+                                this.run(&cmd, window, cx);
                             }))
                             .child(
                                 div()
@@ -203,14 +247,14 @@ impl Render for CommandPalette {
                                                     .text_color(row_fg),
                                             )
                                             .child(
-                                                Label::new(cmd.doc.to_string())
+                                                Label::new(doc)
                                                     .text_size(px(11.))
                                                     .text_color(doc_fg),
                                             ),
                                     )
-                                    .when(!cmd.keys.is_empty(), |this| {
+                                    .when(!keys.is_empty(), |this| {
                                         this.child(
-                                            Label::new(cmd.keys.to_string())
+                                            Label::new(keys)
                                                 .text_size(px(11.))
                                                 .text_color(doc_fg),
                                         )

@@ -1,7 +1,7 @@
 {
   "id": "wezterm-gpui-launcher",
   "schema_version": 1,
-  "updated": "2026-08-28T04:20:00Z",
+  "updated": "2026-08-28T18:20:00Z",
   "legacy": "wezterm-gui/src/overlay/launcher.rs. Trigger: right-click tab-bar Plus (mouseevent do_new_tab_button_click → ShowLauncher). Also ShowLauncher / ShowLauncherArgs / ShowTabNavigator key assignments.",
   "gpui": "049 searchable Picker (not a termwiz clone). 027 chevron is still the new-tab menu. ShowLauncher / ShowTabNavigator Wired in the palette. Unique ops tracked here; COMMANDS+KEY_ASSIGNMENTS overlap docs/command-palette.json.",
   "note": "Per-operation tracker for the wezterm-gui Launcher. STATE.json points here. Append; never delete rows. gpui: wired | listed | needs_mux | needs_gpui | parked | n_a. kind: call_core | gpui_window | gpui_ui | dynamic. user_try: ok | not_tested | n_a. Recommendation: do not clone the overlay. Domain/workspace/launch_menu are mux calls; the rest is a second dump of the palette.",
@@ -10,7 +10,7 @@
     "unique_ops": 12,
     "overlap_palette": true
   },
-  "recommendation": "Do not recreate the 80-item termwiz list. Expose domain spawn (when mux has WSL/unix), workspaces, and lua launch_menu as first-class actions (palette extras and/or the 027 chevron). COMMANDS and KEY_ASSIGNMENTS stay on the command palette.",
+  "recommendation": "Do not recreate the 80-item termwiz list. 053 exposes WSL/exec domain spawn on the chevron, ShowLauncher, and palette. Unix attach and workspaces stay out. COMMANDS and KEY_ASSIGNMENTS stay on the command palette.",
   "how_wezterm_builds_it": {
     "trigger": "Right-click Plus on the tab bar; ShowLauncher; ShowLauncherArgs; ShowTabNavigator uses TABS only",
     "default_flags": [
@@ -37,8 +37,8 @@
       "id": "DOMAINS",
       "kind": "dynamic",
       "core": "mux.iter_domains spawnable: Attached → New Tab (domain `name`); else Attach domain",
-      "gpui": "needs_mux",
-      "notes": "Screenshot: local, WSL:MuleLinux, WSL:Ubuntu, WSL:docker-desktop, WSL:docker-desktop-data, Attach unix. GPUI mux registers only LocalDomain in mux_host::init_inner."
+      "gpui": "wired",
+      "notes": "Screenshot: local, WSL:MuleLinux, WSL:Ubuntu, WSL:docker-desktop, WSL:docker-desktop-data, Attach unix. 053 registers WSL/exec LocalDomain. Unix attach still needs wezterm-client."
     },
     {
       "id": "WORKSPACES",
@@ -86,9 +86,9 @@
       "action": "SpawnCommandInNewTab { domain: DomainName(\"WSL:…\") }",
       "kind": "call_core",
       "core": "mux WslDomain (config wsl_domains / WslDomain::default_domains) then spawn_pane",
-      "gpui": "needs_mux",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Screenshot lists MuleLinux, Ubuntu, docker-desktop, docker-desktop-data. Register WSL domains in mux_host like wezterm-gui. Spawn is then a core call; no special GPUI widget."
+      "notes": "053: register WSL domains in mux_host like wezterm-gui. Chevron / ShowLauncher / palette New Tab (Domain …). Spawn is LocalDomain::spawn_pane with cmd None. docker-desktop* listed if wsl -l shows them (same as wezterm-gui)."
     },
     {
       "id": "AttachDomain.unix",

@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-28T13:45:00Z",
+  "updated": "2026-08-28T18:20:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "052: last tab/exit of one HWND must not quit the others; Copy during Search via Ctrl+Shift+C and palette Copy. Needs user-try. 048/039 still need user-try if not done. Do not start 026/031. Do not start window/ cutover. Debug lua REPL and 049 picker path are backlog.",
+      "action": "053: WSL/exec mux domains on chevron, ShowLauncher, and palette New Tab (Domain …). Needs user-try of a WSL distro. 052/051/050/048/039 still need user-try if not done. Do not start unix Attach, workspaces, 026/031. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default; 050 palette-only. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok** (052: this HWND only when others exist). 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells — needs user-try. 040 splits **user-ok**. 041 inactive HSB **user-ok**. 042 palette selection invert **user-ok**. 043 palette ↑↓ keep selection **user-ok**. 044 palette core/tab chrome **user-ok**. 045 palette ↑↓ scroll-into-view **user-ok**. 046 palette pane dir/rotate/zoom **user-ok**. 047 palette window chrome **user-ok**. 048 palette AdjustPaneSize wired, needs user-try. 049 palette catalog complete (89 wired / 0 listed), needs user-try. 050 overlay parity + scrollbar wired, needs user-try. 051 cascade/focus/badge. 052 close-this-window + search copy wired, needs user-try. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default; 050 palette-only. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok** (052: this HWND only when others exist). 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells — needs user-try. 040 splits **user-ok**. 041 inactive HSB **user-ok**. 042 palette selection invert **user-ok**. 043 palette ↑↓ keep selection **user-ok**. 044 palette core/tab chrome **user-ok**. 045 palette ↑↓ scroll-into-view **user-ok**. 046 palette pane dir/rotate/zoom **user-ok**. 047 palette window chrome **user-ok**. 048 palette AdjustPaneSize wired, needs user-try. 049 palette catalog complete (89 wired / 0 listed), needs user-try. 050 overlay parity + scrollbar wired, needs user-try. 051 cascade/focus/badge. 052 close-this-window + search copy wired, needs user-try. 053 WSL/exec mux domains wired, needs user-try. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -256,6 +256,11 @@
       "id": "close-window-not-app-search-copy",
       "status": "done",
       "notes": "052: last pane/tab of one HWND uses remove_window when others exist; Ctrl+Q still quits all. Search stays on TermPane when palette opens; Ctrl+Shift+C copies the current hit. Needs user-try."
+    },
+    {
+      "id": "mux-wsl-domains",
+      "status": "done",
+      "notes": "053: register WSL (wsl -l -v / lua wsl_domains) and exec_domains as LocalDomain like wezterm-gui. Chevron + launcher + palette New Tab (Domain …). Plus/Ctrl+T still cmd.exe. Unix/SSH attach still out. Needs user-try."
     },
     {
       "id": "delete-old-ui",
@@ -585,6 +590,12 @@
       "decision": "last_tab_exit_closes_this_hwnd_and_search_copy_keeps_hits",
       "rationale": "User after 051: last-tab/exit called cx.quit() and killed every HWND; Copy during Search still failed. remove_window when other GPUI windows exist; keep TermPane search when opening the palette; Ctrl+Shift+C copies the current hit. Ctrl+Q still quits the process. Do not start 026/031.",
       "record": "docs/decisions/052-close-window-not-app-search-copy.json"
+    },
+    {
+      "at": "2026-08-28T18:20:00Z",
+      "decision": "register_wsl_and_exec_localdomains_like_wezterm_gui",
+      "rationale": "User asked to launch machine-registered shells (WSL). Same LocalDomain::new_wsl path as wezterm-gui update_mux_domains. List them on the 027 chevron, ShowLauncher, and palette. Plus/Ctrl+T stay cmd.exe. Do not take wezterm-client unix/SSH attach. Do not start 026/031.",
+      "record": "docs/decisions/053-mux-wsl-domains.json"
     }
   ],
   "constraints": [
@@ -624,7 +635,7 @@
       "status": "poc_picker",
       "legacy": "wezterm-gui/src/overlay/launcher.rs (right-click Plus → ShowLauncher)",
       "gpui": "049 Picker overlay; 027 chevron is the new-tab menu. Matrix: docs/launcher.json",
-      "e2e": "ShowLauncher / ShowTabNavigator Wired. Includes lua launch_menu. WSL/unix/workspaces still need mux domains."
+      "e2e": "ShowLauncher / ShowTabNavigator Wired. Includes lua launch_menu and 053 WSL/exec domains. Unix attach / workspaces still out."
     },
     "app_shell": {
       "status": "poc_standalone",
@@ -700,7 +711,13 @@
       "status": "poc_user_ok",
       "legacy": "wezterm-gui overlay launcher + launch_menu / SpawnCommandInNewTab",
       "gpui": "wezterm-gpui/src/shells.rs + shell.rs DropdownButton suffix + mux_host::spawn_command",
-      "e2e": "user-ok 2026-08-27 (“works well”) after 028 icons. Plus=cmd; chevron lists PowerShell."
+      "e2e": "user-ok 2026-08-27 (“works well”) after 028 icons. Plus=cmd; chevron lists PowerShell. 053 adds WSL/exec domains after local shells."
+    },
+    "mux_wsl_domains": {
+      "status": "wired_needs_user_try",
+      "legacy": "wezterm-gui update_mux_domains LocalDomain::new_wsl + palette New Tab (Domain WSL:…)",
+      "gpui": "wezterm-gpui/src/mux_host.rs register_configured_domains + spawn_in_domain; shells.rs ShellProfile.domain; palette/launcher extras",
+      "e2e": "053 wired. Needs user-try: chevron WSL distro, palette New Tab (Domain WSL:…), ShowLauncher domain row."
     },
     "gpui_component_icon_assets": {
       "status": "poc_user_ok",
@@ -1233,6 +1250,11 @@
       "at": "2026-08-28T13:45:00Z",
       "id": "close_window_not_app_search_copy_052",
       "detail": "User after 051: exiting a shell/tab closed every HWND (cx.quit on last tab of that window). Copy during Search still failed: open_palette cleared TermPane.search; search_key swallowed Ctrl+Shift+C. 052: subscribe_in + remove_window when cx.windows().len()>1; keep search under the palette; copy chord copies the current hit (fallback to query). Needs user-try."
+    },
+    {
+      "at": "2026-08-28T18:20:00Z",
+      "id": "mux_wsl_domains_053",
+      "detail": "User: skip 052 try-list; launch machine-registered shells (WSL). 053: mux_host register_configured_domains (LocalDomain::new_wsl + exec_domains). spawn_in_domain with cmd None so WSL builds wsl.exe --distribution. Chevron/launcher/palette list attached spawnable domains except local. Plus/Ctrl+T still cmd.exe. Unix/SSH/TLS attach still out (wezterm-client). cargo check green; cargo test --lib shells."
     }
   ],
   "blockers": [],
@@ -1283,6 +1305,7 @@
     "overlay_parity_and_scrollbar_050": "wired_needs_user_try",
     "new_window_cascade_search_copy_051": "wired_needs_user_try",
     "close_window_not_app_search_copy_052": "wired_needs_user_try",
+    "mux_wsl_domains_053": "wired_needs_user_try",
     "command_palette_matrix": "docs/command-palette.json",
     "launcher_matrix": "docs/launcher.json"
   }

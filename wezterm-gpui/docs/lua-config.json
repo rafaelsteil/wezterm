@@ -1,14 +1,14 @@
 {
   "id": "wezterm-gpui-lua-config",
   "schema_version": 1,
-  "updated": "2026-08-28T13:10:00Z",
+  "updated": "2026-08-28T18:20:00Z",
   "source_file": "C:\\Users\\rafael\\.wezterm.lua",
   "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
   "stats": {
-    "keys": 27,
+    "keys": 28,
     "user_ok": 14,
     "partial": 1,
-    "not_tested": 4,
+    "not_tested": 5,
     "no_visible_change": 3,
     "not_wired_or_parked": 5
   },
@@ -263,7 +263,7 @@
       "gpui": "not_wired",
       "user_try": "n_a",
       "at": "2026-08-27T19:30:00Z",
-      "notes": "Chevron is hardcoded cmd / PowerShell / pwsh. Do not honor unless asked."
+      "notes": "Chevron is hardcoded cmd / PowerShell / pwsh plus 053 mux WSL/exec domains. 049 ShowLauncher includes lua launch_menu items."
     },
     {
       "key": "skip_close_confirmation_for_processes_named",
@@ -314,6 +314,16 @@
       "user_try": "ok",
       "at": "2026-08-28T01:50:00Z",
       "notes": "Palette text. Selected row uses this as the highlight background (invert). **User-ok** 2026-08-27 (“Confirmed colors work”)."
+    },
+    {
+      "key": "wsl_domains",
+      "in_user_lua": false,
+      "user_value": "default = WslDomain::default_domains() from wsl -l -v",
+      "slice": "053",
+      "gpui": "honored",
+      "user_try": "not_tested",
+      "at": "2026-08-28T18:20:00Z",
+      "notes": "mux_host register_configured_domains. Empty lua wsl_domains={} disables discovery (same as wezterm-gui). Needs user-try of a distro from the chevron."
     }
   ]
 }

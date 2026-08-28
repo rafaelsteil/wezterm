@@ -1,7 +1,7 @@
 {
   "id": "wezterm-gpui-command-palette",
   "schema_version": 1,
-  "updated": "2026-08-28T13:30:00Z",
+  "updated": "2026-08-28T18:20:00Z",
   "legacy": "wezterm-gui/src/commands.rs (CommandDef, compute_default_actions, derive_command_from_key_assignment) + termwindow/palette.rs build_commands. Execute: TermWindow::perform_key_assignment.",
   "gpui": "wezterm-gpui/src/commands.rs PALETTE_COMMANDS + palette.rs overlay (Ctrl+Shift+P). Dispatch by id; do not path-dep wezterm-gui.",
   "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Static PALETTE_COMMANDS is fully Wired (049). 050 adds ToggleFpsHud POC extra and matches wezterm search/quickselect/paneselect UI. Dynamic mux/lua rows stay listed. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm, ToggleFpsHud) are tagged poc_extra.",
@@ -46,7 +46,7 @@
     },
     {
       "id": "wsl_unix_domains",
-      "detail": "Palette/launcher New Tab (Domain WSL:*) and Attach unix need mux domain registration. GPUI mux is LocalDomain only.",
+      "detail": "053: WSL/exec LocalDomain registered; palette/launcher/chevron New Tab (Domain WSL:*). Attach unix still needs wezterm-client. Workspaces still out.",
       "blocked_by": []
     },
     {
@@ -185,7 +185,7 @@
       "core": "none — termwiz overlay of mixed domain+command rows",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: searchable Picker (shells, launch_menu, split, new window, tabs). Not a termwiz clone. See docs/launcher.json."
+      "notes": "049: searchable Picker (shells, launch_menu, split, new window, tabs). 053 adds mux WSL/exec domain rows. Not a termwiz clone. See docs/launcher.json."
     },
     {
       "id": "PasteFrom.PrimarySelection",
@@ -716,9 +716,9 @@
       "menubar": "Shell",
       "kind": "dynamic",
       "core": "mux domain.spawn_pane",
-      "gpui": "listed",
-      "user_try": "n_a",
-      "notes": "WSL/local/unix appear here in wezterm-gui. GPUI mux is LocalDomain only. See launcher.json."
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "notes": "053: WSL/exec appear here. GPUI mux registers LocalDomain::new_wsl + exec_domains. Unix attach still out. See launcher.json."
     },
     {
       "id": "dynamic.AttachDomain",

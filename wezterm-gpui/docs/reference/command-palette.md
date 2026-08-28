@@ -47,7 +47,7 @@ From `command-palette.json` `stats`:
 | `gpui_ui` | Overlay (`Picker` for search, charselect, launcher, debug, pane select; copy mode on TermPane) |
 | `open_url` | `wezterm-open-url` (already a dep) |
 | `input_map` | Key tables — ClearKeyTableStack notifies empty |
-| `dynamic` | Mux domains / workspaces still not in the static catalog; `launch_menu` is in ShowLauncher |
+| `dynamic` | `launch_menu` is in ShowLauncher; **053** WSL/exec domain rows are in the palette + launcher. Unix attach / workspaces still out. |
 
 ## POC shortcuts (049)
 
@@ -56,4 +56,4 @@ From `command-palette.json` `stats`:
 - Search picker = visible lines; Ctrl+Shift+F is still FPS HUD
 - Copy mode = hjkl/v/y, not the full key table
 - Debug = dump, not lua REPL
-- No WSL/unix/workspaces
+- No unix attach / workspaces. **053** wires WSL/exec LocalDomain rows.

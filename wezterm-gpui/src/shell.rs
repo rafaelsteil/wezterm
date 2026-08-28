@@ -179,7 +179,7 @@ impl AppShell {
             match event {
                 PaletteEvent::Executed(id) => {
                     this.palette_open = false;
-                    this.apply_command(id, window, cx);
+                    this.apply_command(&id, window, cx);
                     if !this.palette_open && !window.has_active_dialog(cx) {
                         this.focus_terminal(window, cx);
                     }
@@ -214,7 +214,7 @@ impl AppShell {
 
         let font_px = crate::mux_host::config_font_size();
         let focus_handle = cx.focus_handle();
-        let shells = crate::shells::available_shells();
+        let shells = crate::mux_host::launch_profiles();
         window.focus(&focus_handle, cx);
         window.activate_window();
         let default = shells.first().cloned().unwrap_or_else(crate::shells::default_shell);
@@ -302,6 +302,10 @@ impl AppShell {
     }
 
     fn apply_command(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(name) = id.strip_prefix("domain:") {
+            self.spawn_named_domain(name, window, cx);
+            return;
+        }
         match id {
             "SpawnTab.CurrentPaneDomain" => {
                 self.add_tab(window, cx);
@@ -636,6 +640,10 @@ impl AppShell {
         cx.notify();
     }
 
+    fn spawn_named_domain(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.spawn_profile(&ShellProfile::mux_domain(name), window, cx);
+    }
+
     fn bump_font(&mut self, delta: f32, cx: &mut Context<Self>) {
         self.set_font((self.font_px + delta).clamp(10., 28.), cx);
     }
@@ -943,7 +951,21 @@ impl AppShell {
             items.push(PickerItem {
                 id: format!("launch:tab:{i}"),
                 title: format!("New Tab — {}", profile.label),
-                subtitle: "Spawn".into(),
+                subtitle: profile
+                    .domain
+                    .as_ref()
+                    .map(|d| format!("domain `{d}`"))
+                    .unwrap_or_else(|| "Spawn".into()),
+            });
+        }
+        for profile in crate::mux_host::spawnable_domain_profiles() {
+            if self.shells.iter().any(|s| s.domain.as_deref() == Some(profile.id.as_str())) {
+                continue;
+            }
+            items.push(PickerItem {
+                id: format!("domain:{}", profile.id),
+                title: format!("New Tab (domain `{}`)", profile.id),
+                subtitle: "Mux domain".into(),
             });
         }
         items.push(PickerItem {
@@ -1121,6 +1143,10 @@ impl AppShell {
     }
 
     fn apply_launcher_id(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(name) = id.strip_prefix("domain:") {
+            self.spawn_named_domain(name, window, cx);
+            return;
+        }
         if let Some(n) = id.strip_prefix("tab:") {
             if let Ok(i) = n.parse::<usize>() {
                 self.activate_tab(i, cx);
@@ -1163,10 +1189,19 @@ impl AppShell {
         let label = cmd
             .label_for_palette()
             .unwrap_or_else(|| "launch_menu".into());
+        let domain = spawn_domain_name(&cmd);
+        let argv = if domain.is_some()
+            && cmd.args.as_ref().map(|a| a.is_empty()).unwrap_or(true)
+        {
+            None
+        } else {
+            builder_argv(&builder)
+        };
         let profile = ShellProfile {
-            id: "launch_menu",
+            id: "launch_menu".into(),
             label,
-            argv: builder_argv(&builder),
+            argv,
+            domain,
         };
         self.spawn_profile(&profile, window, cx);
     }
@@ -1610,6 +1645,8 @@ impl AppShell {
 
     fn reload_configuration(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         config::reload();
+        crate::mux_host::register_configured_domains();
+        self.shells = crate::mux_host::launch_profiles();
         let font_px = crate::mux_host::config_font_size();
         self.font_px = font_px;
         for tab in &self.tabs {
@@ -2361,6 +2398,13 @@ fn app_window_options_at(bounds: Option<Bounds<Pixels>>, cx: &App) -> WindowOpti
             ..TitleBar::title_bar_options()
         }),
         ..Default::default()
+    }
+}
+
+fn spawn_domain_name(cmd: &config::keyassignment::SpawnCommand) -> Option<String> {
+    match &cmd.domain {
+        config::keyassignment::SpawnTabDomain::DomainName(name) => Some(name.clone()),
+        _ => None,
     }
 }
 
