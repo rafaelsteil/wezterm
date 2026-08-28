@@ -106,7 +106,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "Ctrl-Alt-Shift-'",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "SplitHorizontal",
@@ -115,7 +115,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "Ctrl-Alt-Shift-5",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "CloseCurrentTab.confirm",
@@ -151,7 +151,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "OpenLinkAtMouseCursor",
@@ -160,7 +160,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ShowLauncher",
@@ -224,7 +224,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "QuickSelect",
@@ -306,7 +306,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "View",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ScrollByPage.Up",
@@ -315,7 +315,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "View",
         "Shift-PageUp",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ScrollByPage.Down",
@@ -324,7 +324,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "View",
         "Shift-PageDown",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ScrollToTop",
@@ -333,7 +333,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "View",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ScrollToBottom",
@@ -342,7 +342,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "View",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ToggleFullScreen",
@@ -351,7 +351,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "View",
         "Alt-Return",
         GpuiWindow,
-        Listed
+        Wired
     ),
     // Window
     cmd!(
@@ -361,7 +361,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ToggleAlwaysOnBottom",
@@ -370,7 +370,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "SetWindowLevel.AlwaysOnBottom",
@@ -379,7 +379,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "SetWindowLevel.Normal",
@@ -388,7 +388,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "SetWindowLevel.AlwaysOnTop",
@@ -397,7 +397,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "Hide",
@@ -406,7 +406,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-M",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "Search",
@@ -469,7 +469,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "RotatePanes.CounterClockwise",
@@ -478,7 +478,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.0",
@@ -487,7 +487,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-1",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.1",
@@ -496,7 +496,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-2",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.2",
@@ -505,7 +505,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-3",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.3",
@@ -514,7 +514,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-4",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.4",
@@ -523,7 +523,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-5",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.5",
@@ -532,7 +532,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-6",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.6",
@@ -541,7 +541,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-7",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.7",
@@ -550,7 +550,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-8",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTab.-1",
@@ -559,7 +559,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-9",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTabRelative.-1",
@@ -568,7 +568,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-Tab",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateTabRelative.1",
@@ -577,7 +577,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Ctrl-Tab",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.0",
@@ -694,7 +694,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-PageUp",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "MoveTabRelative.1",
@@ -703,7 +703,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-PageDown",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "AdjustPaneSize.Left",
@@ -748,7 +748,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-LeftArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivatePaneDirection.Right",
@@ -757,7 +757,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-RightArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivatePaneDirection.Up",
@@ -766,7 +766,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-UpArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivatePaneDirection.Down",
@@ -775,7 +775,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-DownArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "TogglePaneZoomState",
@@ -784,7 +784,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-Z",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateLastTab",
@@ -793,7 +793,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ShowTabNavigator",
@@ -812,7 +812,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Help",
         "",
         OpenUrl,
-        Listed
+        Wired
     ),
     cmd!(
         "OpenUri.discussions",
@@ -821,7 +821,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Help",
         "",
         OpenUrl,
-        Listed
+        Wired
     ),
     cmd!(
         "OpenUri.issues",
@@ -830,7 +830,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Help",
         "",
         OpenUrl,
-        Listed
+        Wired
     ),
     cmd!(
         "ShowDebugOverlay",
@@ -906,6 +906,7 @@ mod tests {
             .filter(|c| c.is_wired())
             .map(|c| c.id)
             .collect();
+        assert_eq!(wired.len(), 55);
         for id in [
             "SpawnTab.CurrentPaneDomain",
             "CopyTo.Clipboard",
@@ -946,6 +947,28 @@ mod tests {
             "RenameTab",
             "PromptInputLine",
             "Confirmation",
+            "ResetTerminal",
+            "OpenLinkAtMouseCursor",
+            "ClearScrollback.ScrollbackAndViewport",
+            "ScrollByPage.Up",
+            "ScrollToTop",
+            "Hide",
+            "ActivateTab.0",
+            "ActivateTab.-1",
+            "ActivateTabRelative.1",
+            "MoveTabRelative.-1",
+            "ActivateLastTab",
+            "OpenUri.docs",
+            "SplitHorizontal",
+            "SplitVertical",
+            "ActivatePaneDirection.Left",
+            "ActivatePaneDirection.Right",
+            "RotatePanes.Clockwise",
+            "TogglePaneZoomState",
+            "ToggleFullScreen",
+            "ResetFontAndWindowSize",
+            "ToggleAlwaysOnTop",
+            "SetWindowLevel.Normal",
         ] {
             assert!(
                 command_by_id(id).is_some_and(|c| c.is_wired()),

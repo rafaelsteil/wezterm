@@ -1,0 +1,6 @@
+{
+  "id": "040-tab-shell-splits",
+  "at": "2026-08-28T00:55:00Z",
+  "decision": "gpui_split_tree_not_mux_tab",
+  "rationale": "User asked for tab/shell splitting, then palette activation. POC panes are LocalDomain::spawn_pane without a mux Tab, so Mux::split_pane cannot resolve pane→tab. First slice is a GPUI binary tree + extra spawn_pane, laid out with gpui-component h_resizable/v_resizable. SplitHorizontal = left/right (new on right); SplitVertical = top/bottom (new on bottom). Click focuses the leaf for keys. CloseCurrentPane closes that leaf. Pane select/rotate/zoom stay listed. Do not path-dep wezterm-gui. Do not start 026/031."
+}

@@ -48,6 +48,9 @@ struct RowKey {
     cols: u16,
     cell_w: u16,
     cell_h: u16,
+    /// Inactive panes get `inactive_pane_hsb` (041). Must be in the key so
+    /// focused and dimmed rows do not share a sprite.
+    inactive: bool,
 }
 
 struct CachedRow {
@@ -148,6 +151,7 @@ impl GlyphPainter {
 
     /// `sel_cols` is per visible row: exclusive column range, or `(u16::MAX, u16::MAX)` if none.
     /// `scale` is `window.scale_factor()` — dest size must match the bitmap in device pixels.
+    /// `focused` false applies lua `inactive_pane_hsb` (wezterm-gui shader HSV).
     pub fn layout(
         &mut self,
         lines: &[Line],
@@ -156,6 +160,7 @@ impl GlyphPainter {
         cols: usize,
         sel_cols: &[(u16, u16)],
         scale: f32,
+        focused: bool,
     ) -> anyhow::Result<TermPaint> {
         let font = self.fonts.default_font()?;
         let metrics = font.metrics();
@@ -165,6 +170,12 @@ impl GlyphPainter {
         let descender = metrics.descender.get();
         let (br, bg, bb, _) = pal.background.as_rgba_u8();
         let pane_bg = pack_rgb(br, bg, bb);
+        let hsb = config::configuration().inactive_pane_hsb;
+        let paint_bg = if focused {
+            pane_bg
+        } else {
+            apply_hsb_u32(pane_bg, hsb)
+        };
         let cols = cols.max(1).min(400);
         let phys_w = (cols as f64 * cell_w).max(1.0);
         let phys_h = cell_h.max(1.0);
@@ -192,6 +203,7 @@ impl GlyphPainter {
                 cols: cols as u16,
                 cell_w: key_cell_w,
                 cell_h: key_cell_h,
+                inactive: !focused,
             };
             let cached = match self.cached_row(key) {
                 Some(c) => c,
@@ -210,6 +222,7 @@ impl GlyphPainter {
                         descender,
                         phys_w as u32,
                         phys_h as u32,
+                        focused,
                     )?;
                     self.store_row(key, CachedRow { image })
                 }
@@ -222,7 +235,7 @@ impl GlyphPainter {
         }
 
         Ok(TermPaint {
-            bg: pane_bg,
+            bg: paint_bg,
             sprites,
             drop_images: std::mem::take(&mut self.pending_drop),
         })
@@ -270,6 +283,7 @@ impl GlyphPainter {
         descender: f64,
         phys_w: u32,
         phys_h: u32,
+        focused: bool,
     ) -> anyhow::Result<Arc<RenderImage>> {
         let (br, bg, bb) = unpack_rgb(pane_bg);
         let mut pixels = vec![0u8; (phys_w * phys_h * 4) as usize];
@@ -316,7 +330,7 @@ impl GlyphPainter {
                 continue;
             }
             let attrs = cell.attrs();
-            let is_cursor = cursor_col == Some(col);
+            let is_cursor = focused && cursor_col == Some(col);
             let selected = has_sel && col >= sel_start_u && col < sel_end_u;
             let mut bgc = pal.resolve_bg(attrs.background());
             if attrs.reverse() {
@@ -350,7 +364,7 @@ impl GlyphPainter {
                     continue;
                 }
                 let selected = has_sel && col >= sel_start_u && col < sel_end_u;
-                let fg_u = cell_fg(cell.attrs(), pal, selected, cursor_col == Some(col));
+                let fg_u = cell_fg(cell.attrs(), pal, selected, focused && cursor_col == Some(col));
                 let (fr, fg_g, fb) = unpack_rgb(fg_u);
                 let (x0, w) = cell_span(col, cell.width(), cell_w);
                 let x0 = x0 as f32;
@@ -420,7 +434,7 @@ impl GlyphPainter {
                             .get_cell(col)
                             .map(|c| c.attrs().clone())
                             .unwrap_or_default();
-                        let is_cursor = cursor_col == Some(col);
+                        let is_cursor = focused && cursor_col == Some(col);
                         let selected = has_sel && col >= sel_start_u && col < sel_end_u;
                         let fg_u = cell_fg(&attrs, pal, selected, is_cursor);
                         if let Ok(glyph) = self.cached_glyph(font, info.glyph_pos, info.font_idx) {
@@ -445,6 +459,20 @@ impl GlyphPainter {
                 }
                 Err(err) => eprintln!("wezterm-gpui shape: {err:#}"),
             }
+        }
+
+        if !focused {
+            if let Some(col) = cursor_col {
+                let ncells = line
+                    .get_cell(col)
+                    .map(|c| c.width().max(1))
+                    .unwrap_or(1);
+                let (cr, cg, cb, _) = pal.cursor_border.as_rgba_u8();
+                let (x, w) = cell_span(col, ncells, cell_w);
+                stroke_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, cr, cg, cb);
+            }
+            let hsb = config::configuration().inactive_pane_hsb;
+            apply_hsb_pixels(&mut pixels, hsb);
         }
 
         // GPUI RenderImage is BGRA (gpui::assets::RenderImage). image::Rgba is
@@ -629,6 +657,124 @@ fn cell_span(col: usize, ncells: usize, cell_w: f64) -> (i32, u32) {
     (x0, (x1 - x0).max(1) as u32)
 }
 
+fn stroke_rect(
+    pixels: &mut [u8],
+    img_w: u32,
+    img_h: u32,
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+    r: u8,
+    g: u8,
+    b: u8,
+) {
+    if w == 0 || h == 0 {
+        return;
+    }
+    fill_rect(pixels, img_w, img_h, x, y, w, 1, r, g, b, 255);
+    fill_rect(
+        pixels,
+        img_w,
+        img_h,
+        x,
+        y.saturating_add_unsigned(h.saturating_sub(1)),
+        w,
+        1,
+        r,
+        g,
+        b,
+        255,
+    );
+    fill_rect(pixels, img_w, img_h, x, y, 1, h, r, g, b, 255);
+    fill_rect(
+        pixels,
+        img_w,
+        img_h,
+        x.saturating_add_unsigned(w.saturating_sub(1)),
+        y,
+        1,
+        h,
+        r,
+        g,
+        b,
+        255,
+    );
+}
+
+/// wezterm-gui `shader.wgsl` `apply_hsv`: RGB → HSV, multiply by
+/// `inactive_pane_hsb`, HSV → RGB. Default brightness 0.8 / saturation 0.9.
+pub(crate) fn apply_hsb_u32(color: u32, t: config::HsbTransform) -> u32 {
+    let (r, g, b) = unpack_rgb(color);
+    let (r, g, b) = apply_hsb_rgb(r, g, b, t);
+    pack_rgb(r, g, b)
+}
+
+fn apply_hsb_pixels(pixels: &mut [u8], t: config::HsbTransform) {
+    if hsb_is_identity(t) {
+        return;
+    }
+    for px in pixels.chunks_exact_mut(4) {
+        let (r, g, b) = apply_hsb_rgb(px[0], px[1], px[2], t);
+        px[0] = r;
+        px[1] = g;
+        px[2] = b;
+    }
+}
+
+fn hsb_is_identity(t: config::HsbTransform) -> bool {
+    (t.hue - 1.0).abs() < 1e-4
+        && (t.saturation - 1.0).abs() < 1e-4
+        && (t.brightness - 1.0).abs() < 1e-4
+}
+
+fn apply_hsb_rgb(r: u8, g: u8, b: u8, t: config::HsbTransform) -> (u8, u8, u8) {
+    let (h, s, v) = rgb2hsv(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+    let (nr, ng, nb) = hsv2rgb(h * t.hue, s * t.saturation, v * t.brightness);
+    (
+        (nr * 255.0).round().clamp(0.0, 255.0) as u8,
+        (ng * 255.0).round().clamp(0.0, 255.0) as u8,
+        (nb * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
+fn mix_f(a: f32, b: f32, t: f32) -> f32 {
+    a * (1.0 - t) + b * t
+}
+
+fn step_f(edge: f32, x: f32) -> f32 {
+    if x >= edge { 1.0 } else { 0.0 }
+}
+
+/// Port of `wezterm-gui/src/shader.wgsl` `rgb2hsv` (Iñigo Quilez).
+fn rgb2hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+    let t = step_f(b, g);
+    let p0 = mix_f(b, g, t);
+    let p1 = mix_f(g, b, t);
+    let p2 = mix_f(-1.0, 0.0, t);
+    let p3 = mix_f(2.0 / 3.0, -1.0 / 3.0, t);
+    let t2 = step_f(p0, r);
+    let q0 = mix_f(p0, r, t2);
+    let q1 = mix_f(p1, p1, t2);
+    let q2 = mix_f(p3, p2, t2);
+    let q3 = mix_f(r, p0, t2);
+    let d = q0 - q3.min(q1);
+    let e = 1.0e-10;
+    let h = (q2 + (q3 - q1) / (6.0 * d + e)).abs();
+    let s = d / (q0 + e);
+    (h, s, q0)
+}
+
+/// Port of `wezterm-gui/src/shader.wgsl` `hsv2rgb`.
+fn hsv2rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
+    let fract = |x: f32| x - x.floor();
+    let p0 = (fract(h + 1.0) * 6.0 - 3.0).abs();
+    let p1 = (fract(h + 2.0 / 3.0) * 6.0 - 3.0).abs();
+    let p2 = (fract(h + 1.0 / 3.0) * 6.0 - 3.0).abs();
+    let mixk = |p: f32| mix_f(1.0, (p - 1.0).clamp(0.0, 1.0), s);
+    (v * mixk(p0), v * mixk(p1), v * mixk(p2))
+}
+
 fn fill_rect(
     pixels: &mut [u8],
     img_w: u32,
@@ -808,5 +954,27 @@ mod cell_span_tests {
         // HarfBuzz-style 10.4 advance would sit ~14px left of the cursor.
         let drifted = 23.0 * 10.4;
         assert!((23.0 * cell_w - drifted).round() >= 1.0);
+    }
+
+    #[test]
+    fn hsb_identity_keeps_dracula_bg() {
+        let t = config::HsbTransform {
+            hue: 1.0,
+            saturation: 1.0,
+            brightness: 1.0,
+        };
+        let color = pack_rgb(0x28, 0x2a, 0x36);
+        assert_eq!(apply_hsb_u32(color, t), color);
+    }
+
+    #[test]
+    fn default_inactive_hsb_darkens_dracula_bg() {
+        let t = config::HsbTransform {
+            hue: 1.0,
+            saturation: 0.9,
+            brightness: 0.8,
+        };
+        let (r, g, b) = unpack_rgb(apply_hsb_u32(pack_rgb(0x28, 0x2a, 0x36), t));
+        assert!(r < 0x28 && g < 0x2a && b < 0x36, "got #{r:02x}{g:02x}{b:02x}");
     }
 }

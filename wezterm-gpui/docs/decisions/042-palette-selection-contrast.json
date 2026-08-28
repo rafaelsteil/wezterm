@@ -1,0 +1,6 @@
+{
+  "id": "042-palette-selection-contrast",
+  "at": "2026-08-28T01:40:00Z",
+  "decision": "palette_selected_row_inverts_lua_fg_bg",
+  "rationale": "User after 041: selected palette row background is almost impossible to distinguish from the foreground. GPUI used theme.accent @ 0.22; on this theme accent ≈ foreground so the highlight vanished. wezterm-gui inverts command_palette_fg_color / command_palette_bg_color (defaults gray 0.75 on #333333). Honor those lua keys; selected row is a solid invert, not accent opacity. Do not start 026/031. Do not honor command_palette_font unless asked."
+}

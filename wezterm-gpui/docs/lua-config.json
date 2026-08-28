@@ -1,12 +1,12 @@
 {
   "id": "wezterm-gpui-lua-config",
   "schema_version": 1,
-  "updated": "2026-08-27T23:10:00Z",
+  "updated": "2026-08-28T01:50:00Z",
   "source_file": "C:\\Users\\rafael\\.wezterm.lua",
   "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
   "stats": {
-    "keys": 24,
-    "user_ok": 11,
+    "keys": 27,
+    "user_ok": 14,
     "partial": 1,
     "not_tested": 3,
     "no_visible_change": 3,
@@ -284,6 +284,36 @@
       "user_try": "not_tested",
       "at": "2026-08-27T23:10:00Z",
       "notes": "NeverPrompt → no dialog. AlwaysPrompt still skips cmd.exe. Ctrl+Q matches window-close, not wezterm QuitApplication always-prompt."
+    },
+    {
+      "key": "inactive_pane_hsb",
+      "in_user_lua": false,
+      "user_value": "default hue=1 saturation=0.9 brightness=0.8",
+      "slice": "041",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-28T01:40:00Z",
+      "notes": "CPU HSV on line sprites (shader.wgsl apply_hsv). Unfocused cursor is a hollow cursor_border. **User-ok** 2026-08-27 (“perfect”)."
+    },
+    {
+      "key": "command_palette_bg_color",
+      "in_user_lua": false,
+      "user_value": "default #333333",
+      "slice": "042",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-28T01:50:00Z",
+      "notes": "Palette chrome + unselected rows. Selected row inverts fg/bg like wezterm-gui. **User-ok** 2026-08-27 (“Confirmed colors work”)."
+    },
+    {
+      "key": "command_palette_fg_color",
+      "in_user_lua": false,
+      "user_value": "default rgba(0.75,0.75,0.75,1)",
+      "slice": "042",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-28T01:50:00Z",
+      "notes": "Palette text. Selected row uses this as the highlight background (invert). **User-ok** 2026-08-27 (“Confirmed colors work”)."
     }
   ]
 }

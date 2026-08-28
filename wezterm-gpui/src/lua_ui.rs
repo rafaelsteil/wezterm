@@ -75,6 +75,65 @@ pub fn active_after_close(
     }
 }
 
+/// wezterm-gui `ActivateTab(n)`: negative indexes from the end (`-1` = last).
+pub fn tab_index_from_assignment(n: isize, len: usize) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    let idx = if n < 0 {
+        len.saturating_sub(n.unsigned_abs())
+    } else {
+        n as usize
+    };
+    (idx < len).then_some(idx)
+}
+
+/// wezterm-gui `ActivateTabRelative` with wrap.
+pub fn tab_index_relative(active: usize, delta: isize, len: usize) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    Some((active as isize + delta).rem_euclid(len as isize) as usize)
+}
+
+/// wezterm-gui `MoveTabRelative`: clamp, no wrap.
+pub fn tab_index_move_relative(active: usize, delta: isize, len: usize) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    let tab = active as isize + delta;
+    Some(if tab < 0 {
+        0
+    } else if tab >= len as isize {
+        len - 1
+    } else {
+        tab as usize
+    })
+}
+
+/// Remap `last_active` after moving the tab at `from` to `to` (remove then insert).
+pub fn remap_last_after_move(last: Option<usize>, from: usize, to: usize) -> Option<usize> {
+    let last = last?;
+    if last == from {
+        return Some(to);
+    }
+    Some(if from < to {
+        if last > from && last <= to {
+            last - 1
+        } else {
+            last
+        }
+    } else if to < from {
+        if last >= to && last < from {
+            last + 1
+        } else {
+            last
+        }
+    } else {
+        last
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,5 +197,21 @@ mod tests {
             config::WindowCloseConfirmation::AlwaysPrompt,
             false
         ));
+    }
+
+    #[test]
+    fn tab_index_assignment_and_relative() {
+        assert_eq!(tab_index_from_assignment(0, 3), Some(0));
+        assert_eq!(tab_index_from_assignment(2, 3), Some(2));
+        assert_eq!(tab_index_from_assignment(3, 3), None);
+        assert_eq!(tab_index_from_assignment(-1, 3), Some(2));
+        assert_eq!(tab_index_from_assignment(-2, 3), Some(1));
+        assert_eq!(tab_index_relative(0, -1, 3), Some(2));
+        assert_eq!(tab_index_relative(2, 1, 3), Some(0));
+        assert_eq!(tab_index_move_relative(0, -1, 3), Some(0));
+        assert_eq!(tab_index_move_relative(2, 1, 3), Some(2));
+        assert_eq!(tab_index_move_relative(0, 1, 3), Some(1));
+        assert_eq!(remap_last_after_move(Some(1), 0, 2), Some(0));
+        assert_eq!(remap_last_after_move(Some(0), 0, 2), Some(2));
     }
 }

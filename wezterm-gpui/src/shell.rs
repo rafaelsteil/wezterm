@@ -3,7 +3,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, IconName, Root, Sizable, TitleBar, WindowExt,
+    ActiveTheme, IconName, Root, Sizable, TitleBar, WindowExt, h_resizable, v_resizable,
     button::*,
     label::Label,
     menu::PopupMenuItem,
@@ -13,11 +13,15 @@ use gpui_component::{
 
 use crate::confirm::{open_confirm, open_line_prompt};
 use crate::lua_ui::{
-    active_after_close, format_tab_title, show_tab_bar, wants_quit_prompt, wants_tab_close_prompt,
+    active_after_close, format_tab_title, remap_last_after_move, show_tab_bar,
+    tab_index_from_assignment, tab_index_move_relative, tab_index_relative, wants_quit_prompt,
+    wants_tab_close_prompt,
 };
 use crate::palette::{CommandPalette, PaletteEvent};
 use crate::shells::ShellProfile;
+use crate::split_layout::{LayoutNode, PaneDir, SplitAxis, SplitLayout};
 use crate::term_pane::{TermPane, TermPaneEvent};
+use crate::win_zorder::WindowZOrder;
 
 actions!(
     wezterm_gpui_shell,
@@ -60,14 +64,24 @@ pub fn bind_keys(cx: &mut App) {
 
 struct ShellTab {
     title_override: Option<String>,
-    term: Entity<TermPane>,
+    layout: SplitLayout<Entity<TermPane>>,
 }
 
 impl ShellTab {
     fn title(&self, cx: &App) -> String {
-        self.title_override
-            .clone()
-            .unwrap_or_else(|| self.term.read(cx).title())
+        self.title_override.clone().unwrap_or_else(|| {
+            self.layout
+                .active_pane()
+                .map(|term| term.read(cx).title())
+                .unwrap_or_else(|| "—".into())
+        })
+    }
+
+    fn can_close_without_prompting(&self, reason: mux::pane::CloseReason, cx: &App) -> bool {
+        self.layout
+            .panes()
+            .iter()
+            .all(|term| term.read(cx).can_close_without_prompting(reason))
     }
 }
 
@@ -88,6 +102,11 @@ pub struct AppShell {
     focus_pending: bool,
     /// Plus / Ctrl+T uses `shells[0]`; the chevron lists all of them.
     shells: Vec<ShellProfile>,
+    /// Unique ElementId for each GPUI split group.
+    next_split_id: u64,
+    /// Launch content size; ResetFontAndWindowSize restores this (047).
+    original_size: Size<Pixels>,
+    window_level: WindowZOrder,
 }
 
 impl Focusable for AppShell {
@@ -124,7 +143,7 @@ impl AppShell {
         window.activate_window();
         let default = shells.first().cloned().unwrap_or_else(crate::shells::default_shell);
         let first = Self::new_tab(font_px, focus_handle.clone(), &default, cx);
-        let first_term = first.term.clone();
+        let first_term = first.layout.active_pane().cloned();
         let mut this = Self {
             focus_handle: focus_handle.clone(),
             tabs: vec![first],
@@ -136,8 +155,13 @@ impl AppShell {
             show_fps: false,
             focus_pending: true,
             shells,
+            next_split_id: 1,
+            original_size: launch_content_size(window),
+            window_level: WindowZOrder::Normal,
         };
-        this.watch_pane(first_term, cx);
+        if let Some(term) = first_term {
+            this.watch_pane(term, cx);
+        }
         this
     }
 
@@ -192,19 +216,81 @@ impl AppShell {
                 self.add_tab(cx);
                 self.request_terminal_focus(window, cx);
             }
-            "CloseCurrentTab.confirm" | "CloseCurrentPane.confirm" => {
-                self.confirm_close_active(window, cx)
-            }
+            "SplitHorizontal" => self.split_active(SplitAxis::Horizontal, window, cx),
+            "SplitVertical" => self.split_active(SplitAxis::Vertical, window, cx),
+            "CloseCurrentTab.confirm" => self.confirm_close_active(window, cx),
+            "CloseCurrentPane.confirm" => self.confirm_close_active_pane(window, cx),
             "QuitApplication" => self.confirm_quit(window, cx),
             "IncreaseFontSize" => self.bump_font(1., cx),
             "DecreaseFontSize" => self.bump_font(-1., cx),
             "ResetFontSize" => self.set_font(crate::mux_host::config_font_size(), cx),
+            "ResetFontAndWindowSize" => self.reset_font_and_window_size(window, cx),
+            "ToggleFullScreen" => window.toggle_fullscreen(),
+            "ToggleAlwaysOnTop" => {
+                self.set_window_level(self.window_level.toggle_top(), window);
+            }
+            "ToggleAlwaysOnBottom" => {
+                self.set_window_level(self.window_level.toggle_bottom(), window);
+            }
             "ClearScrollback.ScrollbackOnly" => {
-                if let Some(tab) = self.tabs.get(self.active) {
-                    tab.term.update(cx, |term, cx| {
-                        term.clear_scrollback();
-                        cx.notify();
-                    });
+                self.with_active_term(cx, |term, cx| {
+                    term.clear_scrollback();
+                    cx.notify();
+                });
+            }
+            "ClearScrollback.ScrollbackAndViewport" => {
+                self.with_active_term(cx, |term, cx| {
+                    term.clear_scrollback_and_viewport();
+                    cx.notify();
+                });
+            }
+            "ResetTerminal" => {
+                self.with_active_term(cx, |term, cx| {
+                    term.reset_terminal();
+                    cx.notify();
+                });
+            }
+            "ScrollByPage.Up" => {
+                self.with_active_term(cx, |term, cx| {
+                    term.scroll_by_page(-1.0);
+                    cx.notify();
+                });
+            }
+            "ScrollByPage.Down" => {
+                self.with_active_term(cx, |term, cx| {
+                    term.scroll_by_page(1.0);
+                    cx.notify();
+                });
+            }
+            "ScrollToTop" => {
+                self.with_active_term(cx, |term, cx| {
+                    term.scroll_to_top();
+                    cx.notify();
+                });
+            }
+            "ScrollToBottom" => {
+                self.with_active_term(cx, |term, cx| {
+                    term.scroll_to_bottom();
+                    cx.notify();
+                });
+            }
+            "OpenLinkAtMouseCursor" => {
+                self.with_active_term(cx, |term, _| {
+                    term.open_link_at_mouse_cursor();
+                });
+            }
+            "OpenUri.docs" => wezterm_open_url::open_url("https://wezterm.org/"),
+            "OpenUri.discussions" => {
+                wezterm_open_url::open_url("https://github.com/wezterm/wezterm/discussions/")
+            }
+            "OpenUri.issues" => {
+                wezterm_open_url::open_url("https://github.com/wezterm/wezterm/issues/")
+            }
+            "Hide" => window.minimize_window(),
+            "TogglePaneZoomState" => self.toggle_pane_zoom(cx),
+            "ActivateLastTab" => {
+                if let Some(i) = self.last_active {
+                    self.activate_tab(i, cx);
                 }
             }
             "CopyTo.Clipboard" => {
@@ -218,8 +304,52 @@ impl AppShell {
                 self.open_rename_prompt(window, cx);
             }
             "Confirmation" => self.open_demo_confirm(window, cx),
-            _ => {}
+            id => {
+                if let Some(n) = id.strip_prefix("ActivateTabRelative.") {
+                    if let Ok(delta) = n.parse::<isize>() {
+                        self.activate_tab_relative(delta, cx);
+                    }
+                } else if let Some(n) = id.strip_prefix("ActivateTab.") {
+                    if let Ok(n) = n.parse::<isize>() {
+                        if let Some(i) = tab_index_from_assignment(n, self.tabs.len()) {
+                            self.activate_tab(i, cx);
+                        }
+                    }
+                } else if let Some(n) = id.strip_prefix("MoveTabRelative.") {
+                    if let Ok(delta) = n.parse::<isize>() {
+                        self.move_tab_relative(delta, cx);
+                    }
+                } else if let Some(dir) = id.strip_prefix("ActivatePaneDirection.") {
+                    if let Some(dir) = PaneDir::from_palette_suffix(dir) {
+                        self.activate_pane_dir(dir, cx);
+                    }
+                } else if let Some(rot) = id.strip_prefix("RotatePanes.") {
+                    if rot == "Clockwise" {
+                        self.rotate_panes(true, cx);
+                    } else if rot == "CounterClockwise" {
+                        self.rotate_panes(false, cx);
+                    }
+                } else if let Some(level) = WindowZOrder::from_palette_id(id) {
+                    self.set_window_level(level, window);
+                }
+            }
         }
+    }
+
+    fn with_active_term(
+        &mut self,
+        cx: &mut Context<Self>,
+        f: impl FnOnce(&mut TermPane, &mut Context<TermPane>),
+    ) {
+        let Some(term) = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.layout.active_pane())
+            .cloned()
+        else {
+            return;
+        };
+        term.update(cx, f);
     }
 
     fn default_profile(&self) -> ShellProfile {
@@ -238,7 +368,7 @@ impl AppShell {
         let term = cx.new(|cx| TermPane::spawn(font_px, shell_focus, profile, cx));
         ShellTab {
             title_override: None,
-            term,
+            layout: SplitLayout::leaf(term),
         }
     }
 
@@ -254,29 +384,79 @@ impl AppShell {
             profile,
             cx,
         );
-        let term = tab.term.clone();
+        let term = tab.layout.active_pane().cloned();
         if !self.tabs.is_empty() {
             self.last_active = Some(self.active);
         }
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
-        self.watch_pane(term, cx);
+        if let Some(term) = term {
+            self.watch_pane(term, cx);
+        }
+        self.sync_pane_focus(cx);
     }
 
-    fn activate_tab(&mut self, index: usize) {
+    fn activate_tab(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.tabs.len() || index == self.active {
             return;
         }
         self.last_active = Some(self.active);
         self.active = index;
+        self.sync_pane_focus(cx);
+    }
+
+    fn activate_tab_relative(&mut self, delta: isize, cx: &mut Context<Self>) {
+        if let Some(i) = tab_index_relative(self.active, delta, self.tabs.len()) {
+            self.activate_tab(i, cx);
+        }
+    }
+
+    fn move_tab_relative(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let n = self.tabs.len();
+        let Some(dest) = tab_index_move_relative(self.active, delta, n) else {
+            return;
+        };
+        if dest == self.active {
+            return;
+        }
+        let from = self.active;
+        let tab = self.tabs.remove(from);
+        self.tabs.insert(dest, tab);
+        self.last_active = remap_last_after_move(self.last_active, from, dest);
+        self.active = dest;
+        self.sync_pane_focus(cx);
+    }
+
+    fn sync_pane_focus(&self, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        let active = tab.layout.active_index();
+        for (i, pane) in tab.layout.panes().iter().enumerate() {
+            let focused = i == active;
+            pane.update(cx, |term, cx| {
+                if term.set_focused(focused) {
+                    cx.notify();
+                }
+            });
+        }
     }
 
     fn watch_pane(&mut self, term: Entity<TermPane>, cx: &mut Context<Self>) {
         cx.subscribe(&term, |this, pane, event, cx| {
             match event {
                 TermPaneEvent::Exited => {
-                    if let Some(index) = this.tabs.iter().position(|t| t.term == pane) {
-                        this.dismiss_exited_tab(index, cx);
+                    if let Some(index) = this.tabs.iter().position(|t| t.layout.contains(&pane)) {
+                        this.dismiss_exited_pane(index, pane, cx);
+                    }
+                }
+                TermPaneEvent::Activated => {
+                    for tab in &mut this.tabs {
+                        if tab.layout.set_active_pane(&pane) {
+                            this.sync_pane_focus(cx);
+                            cx.notify();
+                            break;
+                        }
                     }
                 }
             }
@@ -284,16 +464,24 @@ impl AppShell {
         .detach();
     }
 
-    /// Process already gone (`exit`). No confirm. Last tab → quit the app,
-    /// same as wezterm-gui `exit_behavior = Close` + `quit_when_all_windows_are_closed`.
-    fn dismiss_exited_tab(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index >= self.tabs.len() {
+    /// Process already gone (`exit`). No confirm. Last pane of last tab → quit
+    /// the app, same as wezterm-gui `exit_behavior = Close` +
+    /// `quit_when_all_windows_are_closed`. A split sibling just goes away.
+    fn dismiss_exited_pane(
+        &mut self,
+        tab_index: usize,
+        pane: Entity<TermPane>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.tabs.get_mut(tab_index) else {
             return;
-        }
-        if self.remove_tab_at(index) {
+        };
+        let empty = tab.layout.remove_pane(&pane);
+        if empty && self.remove_tab_at(tab_index) {
             cx.quit();
             return;
         }
+        self.sync_pane_focus(cx);
         self.focus_pending = true;
         cx.notify();
     }
@@ -311,11 +499,26 @@ impl AppShell {
     fn set_font(&mut self, font_px: f32, cx: &mut Context<Self>) {
         self.font_px = font_px;
         for tab in &self.tabs {
-            tab.term.update(cx, |term, cx| {
-                term.set_font_px(font_px);
-                cx.notify();
-            });
+            for term in tab.layout.panes() {
+                term.update(cx, |term, cx| {
+                    term.set_font_px(font_px);
+                    cx.notify();
+                });
+            }
         }
+    }
+
+    fn reset_font_and_window_size(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if window.is_fullscreen() {
+            window.toggle_fullscreen();
+        }
+        self.set_font(crate::mux_host::config_font_size(), cx);
+        window.resize(self.original_size);
+    }
+
+    fn set_window_level(&mut self, level: WindowZOrder, window: &Window) {
+        self.window_level = level;
+        crate::win_zorder::apply(window, level);
     }
 
     fn close_tab_at(&mut self, index: usize) {
@@ -373,10 +576,7 @@ impl AppShell {
             self.confirm_quit(window, cx);
             return;
         }
-        let skip = self.tabs[index]
-            .term
-            .read(cx)
-            .can_close_without_prompting(mux::pane::CloseReason::Tab);
+        let skip = self.tabs[index].can_close_without_prompting(mux::pane::CloseReason::Tab, cx);
         if !wants_tab_close_prompt(skip) {
             self.close_tab_at(index);
             self.request_terminal_focus(window, cx);
@@ -406,13 +606,127 @@ impl AppShell {
         );
     }
 
+    fn split_active(&mut self, axis: SplitAxis, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(src) = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.layout.active_pane())
+            .cloned()
+        else {
+            return;
+        };
+        let profile = src.read(cx).profile().clone();
+        let term = cx.new(|cx| {
+            TermPane::spawn(self.font_px, self.focus_handle.clone(), &profile, cx)
+        });
+        let id = self.next_split_id;
+        self.next_split_id += 1;
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.layout.split(axis, term.clone(), id);
+        }
+        self.watch_pane(term, cx);
+        self.sync_pane_focus(cx);
+        self.request_terminal_focus(window, cx);
+        cx.notify();
+    }
+
+    fn activate_pane_dir(&mut self, dir: PaneDir, cx: &mut Context<Self>) {
+        {
+            let Some(tab) = self.tabs.get_mut(self.active) else {
+                return;
+            };
+            if tab.layout.is_zoomed() {
+                if !config::configuration().unzoom_on_switch_pane {
+                    return;
+                }
+                tab.layout.unzoom();
+            }
+            let _ = tab.layout.activate_direction(dir);
+        }
+        self.sync_pane_focus(cx);
+        cx.notify();
+    }
+
+    fn rotate_panes(&mut self, clockwise: bool, cx: &mut Context<Self>) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.layout.rotate(clockwise);
+        }
+        self.sync_pane_focus(cx);
+        cx.notify();
+    }
+
+    fn toggle_pane_zoom(&mut self, cx: &mut Context<Self>) {
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.layout.toggle_zoom();
+        }
+        self.sync_pane_focus(cx);
+        cx.notify();
+    }
+
+    fn confirm_close_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if tab.layout.pane_count() <= 1 {
+            self.confirm_close_tab_at(self.active, window, cx);
+            return;
+        }
+        let Some(pane) = tab.layout.active_pane().cloned() else {
+            return;
+        };
+        let skip = pane
+            .read(cx)
+            .can_close_without_prompting(mux::pane::CloseReason::Pane);
+        if !wants_tab_close_prompt(skip) {
+            self.close_pane_in_tab(self.active, pane, window, cx);
+            return;
+        }
+        self.focus_terminal(window, cx);
+        let shell = cx.entity();
+        let restore = Self::dialog_restore(shell.clone());
+        let tab_index = self.active;
+        open_confirm(
+            window,
+            cx,
+            "Close pane?",
+            "🛑 Really kill this pane?",
+            "Close",
+            true,
+            move |window, cx| {
+                shell.update(cx, |this, cx| {
+                    this.close_pane_in_tab(tab_index, pane.clone(), window, cx);
+                });
+            },
+            restore,
+        );
+    }
+
+    fn close_pane_in_tab(
+        &mut self,
+        tab_index: usize,
+        pane: Entity<TermPane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(tab) = self.tabs.get_mut(tab_index) else {
+            return;
+        };
+        let empty = tab.layout.remove_pane(&pane);
+        if empty && self.remove_tab_at(tab_index) {
+            cx.quit();
+            return;
+        }
+        self.sync_pane_focus(cx);
+        self.request_terminal_focus(window, cx);
+        cx.notify();
+    }
+
     fn confirm_quit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let policy = config::configuration().window_close_confirmation;
-        let all_skip = self.tabs.iter().all(|t| {
-            t.term
-                .read(cx)
-                .can_close_without_prompting(mux::pane::CloseReason::Window)
-        });
+        let all_skip = self
+            .tabs
+            .iter()
+            .all(|t| t.can_close_without_prompting(mux::pane::CloseReason::Window, cx));
         if !wants_quit_prompt(policy, all_skip) {
             cx.quit();
             return;
@@ -558,7 +872,8 @@ impl AppShell {
         let copied = self
             .tabs
             .get(self.active)
-            .map(|tab| tab.term.update(cx, |term, cx| term.copy_selection(cx)))
+            .and_then(|tab| tab.layout.active_pane())
+            .map(|term| term.update(cx, |term, cx| term.copy_selection(cx)))
             .unwrap_or(false);
         if notify {
             if copied {
@@ -573,8 +888,9 @@ impl AppShell {
         let pasted = self
             .tabs
             .get(self.active)
-            .map(|tab| {
-                tab.term.update(cx, |term, cx| {
+            .and_then(|tab| tab.layout.active_pane())
+            .map(|term| {
+                term.update(cx, |term, cx| {
                     let ok = term.paste_clipboard(cx);
                     if ok {
                         cx.notify();
@@ -606,8 +922,13 @@ impl AppShell {
         if self.palette_open || window.has_active_dialog(cx) {
             return;
         }
-        if let Some(tab) = self.tabs.get(self.active) {
-            tab.term.update(cx, |term, cx| {
+        if let Some(term) = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.layout.active_pane())
+            .cloned()
+        {
+            term.update(cx, |term, cx| {
                 if term.key_down(event, cx) {
                     cx.stop_propagation();
                     cx.notify();
@@ -624,7 +945,16 @@ impl Render for AppShell {
             self.focus_pending = false;
         }
         let active = self.active.min(self.tabs.len().saturating_sub(1));
-        let term = self.tabs.get(active).map(|t| t.term.clone());
+        let pane_body = self.tabs.get(active).map(|t| {
+            if t.layout.is_zoomed() {
+                render_split_tree(
+                    &LayoutNode::leaf(t.layout.active_index()),
+                    t.layout.panes(),
+                )
+            } else {
+                render_split_tree(t.layout.root(), t.layout.panes())
+            }
+        });
         let cfg = config::configuration();
         let tab_titles: Vec<(usize, String)> = self
             .tabs
@@ -657,7 +987,8 @@ impl Render for AppShell {
         let status_line = self
             .tabs
             .get(active)
-            .map(|t| t.term.read(cx).status_line())
+            .and_then(|t| t.layout.active_pane())
+            .map(|term| term.read(cx).status_line())
             .unwrap_or_else(|| "no pane".into());
         // Root::render does not paint these. Without them, Ctrl+Q / tab X
         // push an AlertDialog that steals focus but never appears (038).
@@ -714,7 +1045,7 @@ impl Render for AppShell {
                     TabBar::new("tabs")
                         .selected_index(active)
                         .on_click(cx.listener(|this, index, window, cx| {
-                            this.activate_tab(*index);
+                            this.activate_tab(*index, cx);
                             this.request_terminal_focus(window, cx);
                             cx.notify();
                         }))
@@ -781,7 +1112,7 @@ impl Render for AppShell {
                     .w_full()
                     .min_h_0()
                     .bg(rgb(0x0c0c0c))
-                    .when_some(term, |this, term| this.child(term)),
+                    .when_some(pane_body, |this, body| this.child(body)),
             )
             .child(
                 div()
@@ -833,5 +1164,47 @@ impl Render for AppShell {
             .when(self.show_fps, |this| {
                 this.child(gpui_fps::fps_monitor(window, cx))
             })
+    }
+}
+
+/// Content size at first AppShell paint. Matches `main.rs` windowed bounds
+/// when the platform has not reported a size yet.
+fn launch_content_size(window: &Window) -> Size<Pixels> {
+    let measured = window.bounds().size;
+    if measured.width > px(1.) && measured.height > px(1.) {
+        measured
+    } else {
+        size(px(980.), px(640.))
+    }
+}
+
+fn render_split_tree(node: &LayoutNode, panes: &[Entity<TermPane>]) -> AnyElement {
+    match node {
+        LayoutNode::Leaf(i) => {
+            let Some(pane) = panes.get(*i) else {
+                return div().into_any_element();
+            };
+            div()
+                .size_full()
+                .min_h_0()
+                .overflow_hidden()
+                .child(pane.clone())
+                .into_any_element()
+        }
+        LayoutNode::Split {
+            axis,
+            id,
+            first,
+            second,
+        } => {
+            let group = match axis {
+                SplitAxis::Horizontal => h_resizable(("pane-split", *id)),
+                SplitAxis::Vertical => v_resizable(("pane-split", *id)),
+            };
+            group
+                .child(render_split_tree(first, panes))
+                .child(render_split_tree(second, panes))
+                .into_any_element()
+        }
     }
 }

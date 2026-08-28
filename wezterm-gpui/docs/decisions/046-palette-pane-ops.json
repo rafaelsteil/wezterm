@@ -1,0 +1,6 @@
+{
+  "id": "046-palette-pane-ops",
+  "at": "2026-08-28T03:20:00Z",
+  "decision": "palette_pane_ops_on_gpui_split_tree",
+  "rationale": "User after 045: continue on command palette items. Splits already work (040). Wire ActivatePaneDirection / RotatePanes / TogglePaneZoomState on the GPUI binary tree (not mux Tab). Neighbor pick uses equal-half geometry. AdjustPaneSize stays listed (live divider is gpui-component ResizableState). Do not start charselect, copy-mode, search, cloned launcher, WSL, fullscreen, SpawnWindow, or PaneSelect overlay. Do not start 026/031."
+}

@@ -17,7 +17,9 @@ mod mux_host;
 mod palette;
 pub mod shell;
 mod shells;
+mod split_layout;
 mod term_pane;
+mod win_zorder;
 
 pub use hello::HelloWorld;
 pub use palette::CommandPalette;

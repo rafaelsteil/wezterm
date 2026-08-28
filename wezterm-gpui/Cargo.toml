@@ -45,12 +45,16 @@ wezterm-font = { path = "../wezterm-font", default-features = false, features = 
 wezterm-term = { path = "../term" }
 # 034: Ctrl+click OpenLinkAtMouseCursor (ShellExecute off the UI thread).
 wezterm-open-url = { path = "../wezterm-open-url" }
+# 044: ResetTerminal RIS via Pane::perform_actions.
+termwiz = { path = "../termwiz" }
 # 034: map GPUI modifiers to lua `mouse_bindings` keys.
 wezterm-input-types = { path = "../wezterm-input-types" }
 # Owns `links = "freetype"` in this graph (same crate GPUI font-kit uses).
 freetype-sys = "=0.20.1"
 # GPUI RenderImage frames (same major as gpui's `image`).
 image = "0.25"
+# 047: HWND from GPUI Window for AlwaysOnTop / AlwaysOnBottom.
+raw-window-handle = "0.6"
 
 [patch.crates-io]
 cairo-sys-rs = { path = "../deps/cairo" }

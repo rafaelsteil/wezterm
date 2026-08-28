@@ -1,0 +1,6 @@
+{
+  "id": "043-palette-arrow-keeps-selection",
+  "at": "2026-08-28T01:50:00Z",
+  "decision": "palette_resets_selection_only_on_query_change",
+  "rationale": "User after 042: ↑↓ in the command palette almost immediately jumps back to the first item. CommandPalette observed InputState and zeroed selected on every notify. InputState notifies on caret blink and arrow-key cursor moves, not only on text. Subscribe to InputEvent::Change so typing still resets to row 0. Do not start 026/031."
+}

@@ -6,16 +6,16 @@ Do not keep a second copy of every key in `HANDOFF.md` or `STATE.json`. Those fi
 
 User file: `C:\Users\rafael\.wezterm.lua`.
 
-## Stats (2026-08-27)
+## Stats (2026-08-28)
 
 From `lua-config.json` `stats`:
 
 | Bucket | Count |
 |---|---|
-| Keys tracked | 22 |
-| User-ok | 11 |
+| Keys tracked | 27 |
+| User-ok | 14 |
 | Partial | 1 (Ctrl+click opens; no hover highlight) |
-| Not tested | 1 (`adjust_window_size_when_changing_font_size`) |
+| Not tested | 3 (`adjust_window_size`, skip-close keys) |
 | No visible change (already matched) | 3 (fancy tab bar, window decorations, title-button alignment) |
 | Not wired / parked | 6 |
 
@@ -25,6 +25,8 @@ From `lua-config.json` `stats`:
 |---|---|
 | [020](../plans/020-lua-config-first-slice.md) | Load file. Font, size, scheme, scrollback, bell. **User-ok.** |
 | [034](../plans/034-lua-config-second-slice.md) | Tab chrome + user `mouse_bindings`. **User-ok** except hover highlight. |
+| [041](../plans/041-inactive-pane-hsb.md) | `inactive_pane_hsb`. **User-ok.** |
+| [042](../plans/042-palette-selection-contrast.md) | `command_palette_fg_color` / `command_palette_bg_color` invert on selected row. **User-ok.** |
 
 ## Do not start unless asked
 

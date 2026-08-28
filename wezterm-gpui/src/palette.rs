@@ -2,7 +2,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
     ActiveTheme, StyledExt,
-    input::{Input, InputState},
+    input::{Input, InputEvent, InputState},
     label::Label,
 };
 
@@ -17,6 +17,10 @@ pub struct CommandPalette {
     query: Entity<InputState>,
     selected: usize,
     last_ran: Option<String>,
+    /// Overflow list does not follow `selected` on its own; wheel works
+    /// because `.overflow_y_scroll` handles it. ↑↓ only mutated the index
+    /// (045). Immediate children of the tracked div are the command rows.
+    scroll: ScrollHandle,
 }
 
 impl EventEmitter<PaletteEvent> for CommandPalette {}
@@ -26,23 +30,33 @@ impl CommandPalette {
         let query = cx.new(|cx| {
             InputState::new(window, cx).placeholder("Type a command…  not-yet-implemented rows are dimmed")
         });
-        cx.observe(&query, |this, _, cx| {
-            this.selected = 0;
-            cx.notify();
+        // InputState notifies on caret blink and arrow-key cursor moves, not
+        // only on text. observe() used to zero selected on every notify, so
+        // ↑↓ jumped back to row 0 (043). Only reset when the query changes.
+        cx.subscribe(&query, |this, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                this.selected = 0;
+                this.reveal_selected();
+                cx.notify();
+            }
         })
         .detach();
         Self {
             query,
             selected: 0,
             last_ran: None,
+            scroll: ScrollHandle::new(),
         }
     }
 
-    pub fn focus_search(&self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.selected = 0;
+        self.reveal_selected();
         self.query.update(cx, |input, cx| {
             input.set_value("", window, cx);
             input.focus(window, cx);
         });
+        cx.notify();
     }
 
     pub fn move_sel(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -52,7 +66,12 @@ impl CommandPalette {
         } else {
             self.selected = (self.selected as isize + delta).rem_euclid(n) as usize;
         }
+        self.reveal_selected();
         cx.notify();
+    }
+
+    fn reveal_selected(&self) {
+        self.scroll.scroll_to_item(self.selected);
     }
 
     pub fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -107,6 +126,10 @@ impl Render for CommandPalette {
                 "{n} commands · {wired} wired · dimmed = not yet · ↑↓ select · Enter run · Esc close"
             )
         });
+        // wezterm-gui inverts command_palette_fg/bg on the selected row
+        // (palette.rs). GPUI used theme.accent @ 0.22, which on this theme
+        // sat next to the text color and hid the highlight (042).
+        let (palette_bg, palette_fg) = palette_chrome();
 
         div()
             .id("command-palette")
@@ -118,13 +141,14 @@ impl Render for CommandPalette {
             .rounded_lg()
             .border_1()
             .border_color(cx.theme().border)
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
+            .bg(palette_bg)
+            .text_color(palette_fg)
             .shadow_lg()
             .child(
                 Label::new("Command Palette")
                     .text_size(px(14.))
-                    .font_weight(FontWeight::SEMIBOLD),
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(palette_fg),
             )
             .child(Input::new(&self.query))
             .child(
@@ -135,13 +159,16 @@ impl Render for CommandPalette {
                     .min_h(px(220.))
                     .max_h(px(360.))
                     .overflow_y_scroll()
+                    .track_scroll(&self.scroll)
                     .v_flex()
                     .gap_1()
                     .children(matches.into_iter().enumerate().map(|(ix, cmd)| {
                         let is_sel = ix == selected;
                         let wired = cmd.is_wired();
-                        let fg = if wired {
-                            cx.theme().foreground
+                        let row_bg = if is_sel { palette_fg } else { palette_bg };
+                        let row_fg = if is_sel { palette_bg } else { palette_fg };
+                        let doc_fg = if is_sel {
+                            palette_bg
                         } else {
                             cx.theme().muted_foreground
                         };
@@ -153,12 +180,7 @@ impl Render for CommandPalette {
                             .py_2()
                             .rounded_md()
                             .opacity(if wired { 1. } else { 0.62 })
-                            .bg(if is_sel {
-                                cx.theme().accent.opacity(if wired { 0.22 } else { 0.10 })
-                            } else {
-                                cx.theme().background.opacity(0.)
-                            })
-                            .hover(|s| s.bg(cx.theme().accent.opacity(if wired { 0.15 } else { 0.08 })))
+                            .bg(row_bg)
                             .when(wired, |s| s.cursor_pointer())
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.run(cmd, window, cx);
@@ -178,19 +200,19 @@ impl Render for CommandPalette {
                                             .child(
                                                 Label::new(title)
                                                     .text_size(px(13.))
-                                                    .text_color(fg),
+                                                    .text_color(row_fg),
                                             )
                                             .child(
                                                 Label::new(cmd.doc.to_string())
                                                     .text_size(px(11.))
-                                                    .text_color(cx.theme().muted_foreground),
+                                                    .text_color(doc_fg),
                                             ),
                                     )
                                     .when(!cmd.keys.is_empty(), |this| {
                                         this.child(
                                             Label::new(cmd.keys.to_string())
                                                 .text_size(px(11.))
-                                                .text_color(cx.theme().muted_foreground),
+                                                .text_color(doc_fg),
                                         )
                                     }),
                             )
@@ -202,4 +224,19 @@ impl Render for CommandPalette {
                     .text_color(cx.theme().muted_foreground),
             )
     }
+}
+
+/// Lua `command_palette_bg_color` / `command_palette_fg_color` (defaults
+/// `#333333` / gray 0.75). Selected row inverts these, same as wezterm-gui.
+fn palette_chrome() -> (Hsla, Hsla) {
+    let cfg = config::configuration();
+    (
+        srgba_hsla(&cfg.command_palette_bg_color),
+        srgba_hsla(&cfg.command_palette_fg_color),
+    )
+}
+
+fn srgba_hsla(c: &config::RgbaColor) -> Hsla {
+    let (r, g, b, _) = c.as_rgba_u8();
+    rgb(u32::from_be_bytes([0, r, g, b])).into()
 }

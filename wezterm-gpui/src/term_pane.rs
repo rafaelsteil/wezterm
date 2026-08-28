@@ -31,6 +31,8 @@ const DEFAULT_COLS: usize = 80;
 /// Shell process ended (`exit`, CloseOnCleanExit, mux `PaneRemoved`).
 pub enum TermPaneEvent {
     Exited,
+    /// Clicked; AppShell should route keys / copy / paste here.
+    Activated,
 }
 
 struct LiveMux {
@@ -66,6 +68,12 @@ pub struct TermPane {
     shell_focus: FocusHandle,
     /// Tab title when the PTY has not set one yet (profile label).
     fallback_title: String,
+    /// Spawned command; a split of this pane reuses it.
+    profile: ShellProfile,
+    /// This tab's focused leaf. Inactive panes use `inactive_pane_hsb` (041).
+    focused: bool,
+    /// Last hovered/clicked cell. Palette OpenLinkAtMouseCursor (044).
+    last_mouse: Option<CellPos>,
 }
 
 struct PaintCache {
@@ -78,6 +86,7 @@ struct PaintCache {
     font_px: u32,
     scale: u32,
     sel: Option<(i64, u32, i64, u32)>,
+    focused: bool,
     paint: TermPaint,
 }
 
@@ -90,6 +99,7 @@ impl TermPane {
     ) -> Self {
         let _ = crate::mux_host::ensure_init();
         let fallback_title = profile.label.clone();
+        let profile = profile.clone();
         let painter = match GlyphPainter::new(96) {
             Ok(p) => Some(p),
             Err(err) => {
@@ -112,6 +122,9 @@ impl TermPane {
                 selection: Selection::default(),
                 shell_focus,
                 fallback_title,
+                profile,
+                focused: true,
+                last_mouse: None,
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
@@ -127,8 +140,25 @@ impl TermPane {
                 selection: Selection::default(),
                 shell_focus,
                 fallback_title,
+                profile,
+                focused: true,
+                last_mouse: None,
             },
         }
+    }
+
+    pub fn profile(&self) -> &ShellProfile {
+        &self.profile
+    }
+
+    /// Returns true if the flag changed (caller should notify / drop paint cache).
+    pub fn set_focused(&mut self, focused: bool) -> bool {
+        if self.focused == focused {
+            return false;
+        }
+        self.focused = focused;
+        self.paint_cache = None;
+        true
     }
 
     pub fn set_font_px(&mut self, font_px: f32) {
@@ -208,9 +238,64 @@ impl TermPane {
 
     pub fn clear_scrollback(&mut self) {
         self.viewport = None;
+        self.paint_cache = None;
         if let Ok(live) = self.live.as_mut() {
             live.pane
                 .erase_scrollback(config::keyassignment::ScrollbackEraseMode::ScrollbackOnly);
+        }
+    }
+
+    pub fn clear_scrollback_and_viewport(&mut self) {
+        self.viewport = None;
+        self.paint_cache = None;
+        self.selection.clear();
+        if let Ok(live) = self.live.as_mut() {
+            live.pane.erase_scrollback(
+                config::keyassignment::ScrollbackEraseMode::ScrollbackAndViewport,
+            );
+        }
+    }
+
+    pub fn reset_terminal(&mut self) {
+        self.viewport = None;
+        self.paint_cache = None;
+        self.selection.clear();
+        if let Ok(live) = &self.live {
+            live.pane.perform_actions(vec![termwiz::escape::Action::Esc(
+                termwiz::escape::Esc::Code(termwiz::escape::EscCode::FullReset),
+            )]);
+        }
+    }
+
+    pub fn scroll_to_top(&mut self) {
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let dims = live.pane.get_dimensions();
+        self.paint_cache = None;
+        self.set_viewport(Some(dims.scrollback_top), &dims);
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.paint_cache = None;
+        self.viewport = None;
+    }
+
+    pub fn open_link_at_mouse_cursor(&self) {
+        let Some(pos) = self.last_mouse else {
+            return;
+        };
+        let Ok(live) = &self.live else {
+            return;
+        };
+        if let Some(uri) = hyperlink_at(&*live.pane, pos) {
+            wezterm_open_url::open_url(&uri);
+        }
+    }
+
+    pub fn remember_mouse(&mut self, pos: Point<Pixels>, bounds: Bounds<Pixels>) {
+        if let Some(hit) = self.hit_cell(pos, bounds, true) {
+            self.last_mouse = Some(hit.pos);
         }
     }
 
@@ -342,6 +427,7 @@ impl TermPane {
         let Some(hit) = self.hit_cell(pos, bounds, false) else {
             return;
         };
+        self.last_mouse = Some(hit.pos);
         if live.pane.is_mouse_grabbed() && !modifiers.shift {
             self.send_pty_mouse(MouseEventKind::Press, TermMouseButton::Left, hit, modifiers);
             return;
@@ -623,7 +709,7 @@ impl TermPane {
         self.set_viewport(Some(position), &dims);
     }
 
-    fn scroll_by_page(&mut self, amount: f64) {
+    pub fn scroll_by_page(&mut self, amount: f64) {
         self.paint_cache = None;
         let Ok(live) = &self.live else {
             return;
@@ -731,8 +817,13 @@ impl TermPane {
                     .collect();
                 let (fr, fg, fb, _) = pal.foreground.as_rgba_u8();
                 let (br, bg, bb, _) = pal.background.as_rgba_u8();
-                let fg = u32::from_be_bytes([0, fr, fg, fb]);
-                let bg = u32::from_be_bytes([0, br, bg, bb]);
+                let mut fg = u32::from_be_bytes([0, fr, fg, fb]);
+                let mut bg = u32::from_be_bytes([0, br, bg, bb]);
+                if !self.focused {
+                    let hsb = config::configuration().inactive_pane_hsb;
+                    fg = crate::glyph_paint::apply_hsb_u32(fg, hsb);
+                    bg = crate::glyph_paint::apply_hsb_u32(bg, hsb);
+                }
                 (text, cursor, fg, bg)
             }
             Err(err) => (vec![err.clone()], None, 0xc8c8c8, 0x0c0c0c),
@@ -757,6 +848,7 @@ impl TermPane {
         let font_px = self.font_px.to_bits();
         let sel = self.selection.fingerprint();
         let scale_bits = self.paint_scale.to_bits();
+        let focused = self.focused;
         if let Some(cache) = &self.paint_cache {
             if cache.seq == seq
                 && cache.top == top
@@ -767,6 +859,7 @@ impl TermPane {
                 && cache.font_px == font_px
                 && cache.scale == scale_bits
                 && cache.sel == sel
+                && cache.focused == focused
             {
                 let mut paint = cache.paint.clone();
                 paint.drop_images = Vec::new();
@@ -796,6 +889,7 @@ impl TermPane {
             dims.cols,
             &sel_cols,
             self.paint_scale,
+            focused,
         ) {
             Ok(paint) => {
                 self.paint_cache = Some(PaintCache {
@@ -808,6 +902,7 @@ impl TermPane {
                     font_px,
                     scale: scale_bits,
                     sel,
+                    focused,
                     paint: TermPaint {
                         bg: paint.bg,
                         sprites: paint.sprites.clone(),
@@ -1280,7 +1375,7 @@ impl Render for TermPane {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.painter.is_some() {
             return div()
-                .id("term-pane")
+                .id(("term-pane", cx.entity_id()))
                 .size_full()
                 .min_h_0()
                 .overflow_hidden()
@@ -1299,7 +1394,7 @@ impl Render for TermPane {
         let cursor_col = cursor.map(|(_, col)| col).unwrap_or(0);
 
         div()
-            .id("term-pane")
+            .id(("term-pane", cx.entity_id()))
             .size_full()
             .min_h_0()
             .p_2()
@@ -1308,6 +1403,13 @@ impl Render for TermPane {
             .text_size(px(font_px))
             .font_family("Consolas")
             .overflow_hidden()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, window, cx| {
+                    window.focus(&this.shell_focus, cx);
+                    cx.emit(TermPaneEvent::Activated);
+                }),
+            )
             .on_scroll_wheel(cx.listener(|this, event, _, cx| {
                 this.on_scroll_wheel(event);
                 cx.stop_propagation();
@@ -1425,6 +1527,7 @@ impl Element for TermScreen {
                 // the shell on any press in the pane.
                 entity.update(cx, |term, cx| {
                     window.focus(&term.shell_focus, cx);
+                    cx.emit(TermPaneEvent::Activated);
                     if event.button != MouseButton::Left {
                         return;
                     }
@@ -1438,15 +1541,19 @@ impl Element for TermScreen {
         });
         window.on_mouse_event({
             let entity = entity.clone();
-            move |event: &MouseMoveEvent, phase, _, cx| {
+            let hitbox = hitbox.clone();
+            move |event: &MouseMoveEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
                     return;
                 }
-                if event.pressed_button != Some(MouseButton::Left) {
+                if !hitbox.is_hovered(window) {
                     return;
                 }
                 entity.update(cx, |term, cx| {
-                    if term.on_mouse_drag(event.position, bounds, &event.modifiers) {
+                    term.remember_mouse(event.position, bounds);
+                    if event.pressed_button == Some(MouseButton::Left)
+                        && term.on_mouse_drag(event.position, bounds, &event.modifiers)
+                    {
                         cx.notify();
                     }
                 });

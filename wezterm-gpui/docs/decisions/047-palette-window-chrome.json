@@ -1,0 +1,6 @@
+{
+  "id": "047-palette-window-chrome",
+  "at": "2026-08-28T03:40:00Z",
+  "decision": "palette_window_chrome_gpui_and_win32_zorder",
+  "rationale": "User after 046: continue on command palette items. Wire ToggleFullScreen (GPUI), ResetFontAndWindowSize (lua font + launch size), and AlwaysOnTop/Bottom/Normal via Win32 HWND_TOPMOST (GPUI has no set_window_level; wezterm-gui is a no-op on Windows). Do not start SpawnWindow, ActivateWindow, charselect, copy-mode, search, cloned launcher, WSL, or ReloadConfiguration. Do not start 026/031."
+}

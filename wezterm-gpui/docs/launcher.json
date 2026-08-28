@@ -148,7 +148,7 @@
       "core": "mux Tab split",
       "gpui": "listed",
       "user_try": "not_tested",
-      "notes": "COMMANDS dump. Needs GPUI split layout. See palette splits backlog."
+      "notes": "COMMANDS dump. Palette SplitVertical is 040 (GPUI tree). Launcher overlay not cloned."
     },
     {
       "id": "SplitHorizontal",
@@ -158,7 +158,7 @@
       "core": "mux Tab split",
       "gpui": "listed",
       "user_try": "not_tested",
-      "notes": "COMMANDS dump."
+      "notes": "COMMANDS dump. Palette SplitHorizontal is 040. Launcher overlay not cloned."
     },
     {
       "id": "CloseCurrentTab",

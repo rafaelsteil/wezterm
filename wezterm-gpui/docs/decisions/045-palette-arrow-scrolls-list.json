@@ -1,0 +1,6 @@
+{
+  "id": "045-palette-arrow-scrolls-list",
+  "at": "2026-08-28T02:50:00Z",
+  "decision": "palette_arrow_keys_scroll_tracked_overflow",
+  "rationale": "User after 044: ↑↓ moves the palette highlight but the overflow list stays on the first page; mouse wheel works. Overflow handles wheel; arrow keys only mutated selected. Track ScrollHandle on #command-list and scroll_to_item(selected) after move_sel / query reset. Do not start 026/031."
+}

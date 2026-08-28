@@ -1,14 +1,14 @@
 {
   "id": "wezterm-gpui-command-palette",
   "schema_version": 1,
-  "updated": "2026-08-27T22:20:00Z",
+  "updated": "2026-08-28T03:45:00Z",
   "legacy": "wezterm-gui/src/commands.rs (CommandDef, compute_default_actions, derive_command_from_key_assignment) + termwindow/palette.rs build_commands. Execute: TermWindow::perform_key_assignment.",
   "gpui": "wezterm-gpui/src/commands.rs PALETTE_COMMANDS + palette.rs overlay (Ctrl+Shift+P). Dispatch by id; do not path-dep wezterm-gui.",
   "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Listed rows render dimmed in the GPUI palette and do not execute. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm) are tagged poc_extra.",
   "stats": {
     "commands": 89,
-    "wired": 14,
-    "listed": 75,
+    "wired": 55,
+    "listed": 34,
     "poc_extra": 4,
     "dynamic_not_in_static_catalog": 4
   },
@@ -41,7 +41,7 @@
     },
     {
       "id": "splits",
-      "detail": "Split H/V, pane select, rotate, adjust size, zoom need mux Tab splits plus GPUI split layout. Plus/tabs are one pane per tab today.",
+      "detail": "Split H/V are 040 (GPUI tree + spawn_pane, not mux Tab). 046 wires ActivatePaneDirection / RotatePanes / TogglePaneZoom on that tree. PaneSelect overlay and AdjustPaneSize stay listed.",
       "blocked_by": []
     },
     {
@@ -96,9 +96,9 @@
       "menubar": "Shell",
       "kind": "call_core",
       "core": "mux Tab split + LocalDomain::spawn_pane",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Core split exists. GPUI still one TermPane per tab; needs split layout."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "040: GPUI binary tree + spawn_pane (POC panes are not in a mux Tab). New cmd on the bottom. Resizable divider. Click to focus. **User-ok** 2026-08-27 (“works great”). 041 inactive HSB."
     },
     {
       "id": "SplitHorizontal",
@@ -107,9 +107,9 @@
       "menubar": "Shell",
       "kind": "call_core",
       "core": "mux Tab split + LocalDomain::spawn_pane",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Same as SplitVertical."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "040: same as SplitVertical; new cmd on the right. **User-ok** 2026-08-27 (“works great”)."
     },
     {
       "id": "CloseCurrentTab.confirm",
@@ -130,8 +130,8 @@
       "kind": "call_core",
       "core": "mux close pane",
       "gpui": "wired",
-      "user_try": "ok",
-      "notes": "POC has no splits, so this is the same as close tab today."
+      "user_try": "not_tested",
+      "notes": "040: closes the focused leaf. Last pane in a tab is still close-tab. Needs user-try after splits."
     },
     {
       "id": "DetachDomain.CurrentPaneDomain",
@@ -151,9 +151,9 @@
       "menubar": "Shell",
       "kind": "call_core",
       "core": "Pane::perform_actions Esc FullReset (RIS)",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready: TermPane already holds Arc<dyn Pane>."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: Pane::perform_actions RIS. Needs user-try. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "OpenLinkAtMouseCursor",
@@ -162,9 +162,9 @@
       "menubar": "Shell",
       "kind": "call_core",
       "core": "hyperlink at last mouse cell + wezterm-open-url",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "034 Ctrl+click already opens. Palette action needs a stored cursor cell; no-op if none."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: last hovered/clicked cell + wezterm-open-url. Ctrl+click already 034. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ShowLauncher",
@@ -239,9 +239,9 @@
       "menubar": "Edit",
       "kind": "call_core",
       "core": "Pane::erase_scrollback(ScrollbackAndViewport)",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready: same API, different enum."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: erase_scrollback ScrollbackAndViewport. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "QuickSelect",
@@ -338,9 +338,9 @@
       "menubar": "View",
       "kind": "gpui_window",
       "core": "none — also restores outer pixel size",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Font reset is wired; window size restore is GPUI window API."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: reset font to lua + resize to launch content size. Exits fullscreen first. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "ScrollByPage.Up",
@@ -349,9 +349,9 @@
       "menubar": "View",
       "kind": "call_core",
       "core": "TermPane viewport (already used by Ctrl+wheel 034)",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready: scroll_by_page is private on TermPane."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: TermPane.scroll_by_page(-1). **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ScrollByPage.Down",
@@ -360,9 +360,9 @@
       "menubar": "View",
       "kind": "call_core",
       "core": "TermPane viewport",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Same as ScrollByPage.Up."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: TermPane.scroll_by_page(1). **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ScrollToTop",
@@ -371,9 +371,9 @@
       "menubar": "View",
       "kind": "call_core",
       "core": "set viewport to scrollback_top",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: viewport = scrollback_top. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ScrollToBottom",
@@ -382,9 +382,9 @@
       "menubar": "View",
       "kind": "call_core",
       "core": "viewport = None (live)",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready. Typing already snaps to live."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: viewport = None (live). **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ToggleFullScreen",
@@ -393,9 +393,9 @@
       "menubar": "View",
       "kind": "gpui_window",
       "core": "none — window.toggle_fullscreen",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "GPUI Window API. Alt-Return in wezterm-gui."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: window.toggle_fullscreen(). **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "ToggleAlwaysOnTop",
@@ -404,9 +404,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "GPUI / Win32 HWND_TOPMOST. Group with ToggleAlwaysOnBottom + SetWindowLevel.*."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: Win32 HWND_TOPMOST / HWND_NOTOPMOST / HWND_BOTTOM (GPUI has no set_window_level; wezterm-gui is a no-op on Windows). Group with ToggleAlwaysOnBottom + SetWindowLevel.*. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "ToggleAlwaysOnBottom",
@@ -415,9 +415,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Same group as ToggleAlwaysOnTop."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: same group. HWND_BOTTOM is send-to-back, not sticky. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "SetWindowLevel.AlwaysOnBottom",
@@ -426,9 +426,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Same group."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: same group. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "SetWindowLevel.Normal",
@@ -437,9 +437,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Same group."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: same group. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "SetWindowLevel.AlwaysOnTop",
@@ -448,9 +448,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Same group."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "047: same group. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
       "id": "Hide",
@@ -459,9 +459,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none — window.hide / minimize",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "TitleBar already has minimize (028)."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: window.minimize_window(). **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "Search",
@@ -492,9 +492,9 @@
       "menubar": "Window",
       "kind": "call_core",
       "core": "mux Tab::rotate",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Needs splits. Catalog: RotatePanes.Clockwise, .CounterClockwise."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "046: GPUI tree rotate (leaf identities cycle; shape stays). Catalog: RotatePanes.Clockwise, .CounterClockwise. **User-ok** 2026-08-27 (“works like a charm”)."
     },
     {
       "id": "ActivateTab.*",
@@ -503,9 +503,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none — AppShell.tabs already",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready on chrome: tabs exist. Catalog ActivateTab.0..7, ActivateTab.-1, ActivateTabRelative.-1, ActivateTabRelative.1."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: ActivateTab.0..7, ActivateTab.-1, ActivateTabRelative ±1. Needs user-try. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ActivateWindow.*",
@@ -525,9 +525,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none — reorder AppShell.tabs",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready on chrome."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: reorder AppShell.tabs. Needs user-try. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "AdjustPaneSize.*",
@@ -538,7 +538,7 @@
       "core": "mux Tab::adjust_pane_size",
       "gpui": "listed",
       "user_try": "not_tested",
-      "notes": "Needs splits."
+      "notes": "046 skipped: live divider is gpui-component ResizableState, not stored on the GPUI tree."
     },
     {
       "id": "ActivatePaneDirection.*",
@@ -547,9 +547,9 @@
       "menubar": "Window",
       "kind": "call_core",
       "core": "mux Tab::activate_pane_direction",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Needs splits."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "046: neighbor by equal-half geometry (largest shared edge). Catalog ActivatePaneDirection.Left/Right/Up/Down. **User-ok** 2026-08-27 (“works like a charm”)."
     },
     {
       "id": "TogglePaneZoomState",
@@ -558,9 +558,9 @@
       "menubar": "Window",
       "kind": "call_core",
       "core": "mux Tab::toggle_zoom",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "Needs splits."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "046: paint only the active leaf. Split unzooms. unzoom_on_switch_pane (default true) on ActivatePaneDirection. **User-ok** 2026-08-27 (“works like a charm”)."
     },
     {
       "id": "ActivateLastTab",
@@ -569,9 +569,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none — AppShell.last_active (034)",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready: last_active is already updated on close."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: last_active. Needs user-try. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ShowTabNavigator",
@@ -591,9 +591,9 @@
       "menubar": "Help",
       "kind": "open_url",
       "core": "wezterm-open-url",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready. Same helper as 034. Group with OpenUri.discussions / .issues."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: wezterm.org. Needs user-try. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "OpenUri.discussions",
@@ -602,9 +602,9 @@
       "menubar": "Help",
       "kind": "open_url",
       "core": "wezterm-open-url",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: GitHub discussions. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "OpenUri.issues",
@@ -613,9 +613,9 @@
       "menubar": "Help",
       "kind": "open_url",
       "core": "wezterm-open-url",
-      "gpui": "listed",
-      "user_try": "not_tested",
-      "notes": "call_core_ready."
+      "gpui": "wired",
+      "user_try": "ok",
+      "notes": "044: GitHub issues. **User-ok** 2026-08-27 (“all of these work”)."
     },
     {
       "id": "ShowDebugOverlay",

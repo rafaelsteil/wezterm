@@ -1,0 +1,6 @@
+{
+  "id": "041-inactive-pane-hsb",
+  "at": "2026-08-28T01:30:00Z",
+  "decision": "inactive_pane_uses_lua_hsb_on_line_sprites",
+  "rationale": "User after 040: wezterm-gui inactive pane is slightly darker (Dracula) with a hollow cursor. Default inactive_pane_hsb is brightness 0.8 / saturation 0.9. GPUI has no HSV shader; apply the same RGB→HSV multiply as wezterm-gui shader.wgsl on the 017 line-sprite bitmap. Unfocused cursor is a 1px cursor_border outline, not cursor_bg fill. Do not start 026/031."
+}

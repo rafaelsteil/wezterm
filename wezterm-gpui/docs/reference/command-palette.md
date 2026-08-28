@@ -8,15 +8,27 @@ wezterm-gui builds the list in `wezterm-gui/src/commands.rs` (`compute_default_a
 
 GPUI lists the Windows default catalog in `wezterm-gpui/src/commands.rs`. **Wired** rows run. **Listed** rows are dimmed and do not execute.
 
-## Stats (2026-08-27)
+**042:** selected row inverts lua `command_palette_fg_color` / `command_palette_bg_color` (wezterm-gui), not `theme.accent` opacity. **User-ok.**
+
+**043:** ↑↓ keep the highlight. `InputEvent::Change` resets to row 0; caret blink / Input arrows do not. **User-ok.**
+
+**044:** scroll, reset, open link, Help URLs, minimize, ActivateTab / MoveTab. **41 wired / 48 listed.** **User-ok.**
+
+**045:** ↑↓ scroll the selected row into view (`ScrollHandle` on `#command-list`). **User-ok.**
+
+**046:** ActivatePaneDirection / RotatePanes / TogglePaneZoom on the GPUI split tree. **48 wired / 41 listed.** **User-ok.**
+
+**047:** ToggleFullScreen, ResetFontAndWindowSize, AlwaysOnTop/Bottom/Normal. **55 wired / 34 listed.** **User-ok.**
+
+## Stats (2026-08-28)
 
 From `command-palette.json` `stats`:
 
 | Bucket | Count |
 |---|---|
 | Catalog rows (Rust) | 89 |
-| Wired (Enter runs) | 14 |
-| Listed (dimmed) | 75 |
+| Wired (Enter runs) | 55 |
+| Listed (dimmed) | 34 |
 | POC extras (not in Windows defaults) | 4 (Quit, Rename, Prompt, Confirm) |
 | Dynamic (mux/lua, not in static catalog) | 4 |
 
@@ -35,7 +47,8 @@ From `command-palette.json` `stats`:
 
 - Charselect
 - Copy mode / search overlay (Ctrl+Shift+F is the FPS HUD in this POC)
-- Splits / pane select / rotate / zoom
+- Pane select overlay / adjust size
 - WSL + unix mux domains
 - lua `launch_menu` / `augment-command-palette`
 - Cloning the launcher overlay (`docs/launcher.json`)
+- SpawnWindow / ActivateWindow / ReloadConfiguration

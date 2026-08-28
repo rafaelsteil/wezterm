@@ -1,0 +1,6 @@
+{
+  "id": "044-palette-core-chrome",
+  "at": "2026-08-28T02:15:00Z",
+  "decision": "wire_palette_call_core_and_tab_chrome_not_overlays",
+  "rationale": "User after 043: continue on command palette items. Wire thin call_core / tab chrome / Help URLs (scroll, reset, open link, minimize, ActivateTab/MoveTab). Do not start charselect, copy-mode, search, cloned launcher, WSL domains, fullscreen, always-on-top, SpawnWindow, pane rotate/zoom, or ReloadConfiguration (live lua reload still parked). Do not start 026/031."
+}

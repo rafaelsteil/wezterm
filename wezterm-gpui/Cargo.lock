@@ -8678,6 +8678,8 @@ dependencies = [
  "mux",
  "portable-pty",
  "promise",
+ "raw-window-handle",
+ "termwiz",
  "wezterm-bidi",
  "wezterm-font",
  "wezterm-input-types",
