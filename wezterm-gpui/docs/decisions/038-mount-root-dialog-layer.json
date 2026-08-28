@@ -1,0 +1,6 @@
+{
+  "id": "038-mount-root-dialog-layer",
+  "at": "2026-08-27T22:55:00Z",
+  "decision": "appshell_renders_root_dialog_sheet_notification_layers",
+  "rationale": "User after 037: Ctrl+Q shows no confirmation; nothing visible. open_alert_dialog pushes Root.active_dialogs and steals focus, but Root::render does not paint the list. First-level view must call render_dialog_layer / sheet / notification (gpui-component docs + story). Invisible modal left has_active_dialog true so typing died. 037 restore still applies after a visible dismiss. Do not start 026/031."
+}

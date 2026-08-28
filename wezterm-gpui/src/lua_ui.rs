@@ -29,6 +29,25 @@ pub fn show_tab_bar(tab_count: usize, enable_tab_bar: bool, hide_if_only_one: bo
     enable_tab_bar && !(hide_if_only_one && tab_count <= 1)
 }
 
+/// CloseCurrentTab { confirm: true } still skips when the pane is in
+/// `skip_close_confirmation_for_processes_named` (cmd.exe, powershell, …).
+pub fn wants_tab_close_prompt(can_close_without_prompting: bool) -> bool {
+    !can_close_without_prompting
+}
+
+/// Ctrl+Q / last-tab X. wezterm-gui `QuitApplication` always prompts on
+/// `AlwaysPrompt`; window-close does not if every pane is skip-listed.
+/// POC matches window-close so a default cmd.exe session does not prompt.
+pub fn wants_quit_prompt(
+    policy: config::WindowCloseConfirmation,
+    all_can_close_without_prompting: bool,
+) -> bool {
+    match policy {
+        config::WindowCloseConfirmation::NeverPrompt => false,
+        config::WindowCloseConfirmation::AlwaysPrompt => !all_can_close_without_prompting,
+    }
+}
+
 /// Active index after removing `closed` from `tab_count_before` tabs.
 pub fn active_after_close(
     active: usize,
@@ -101,5 +120,23 @@ mod tests {
         assert_eq!(active_after_close(2, Some(0), 2, 3, false), 1);
         // closing a non-active tab left of active
         assert_eq!(active_after_close(2, Some(0), 0, 3, true), 1);
+    }
+
+    #[test]
+    fn close_prompt_skips_stateless_shells() {
+        assert!(!wants_tab_close_prompt(true));
+        assert!(wants_tab_close_prompt(false));
+        assert!(!wants_quit_prompt(
+            config::WindowCloseConfirmation::NeverPrompt,
+            false
+        ));
+        assert!(!wants_quit_prompt(
+            config::WindowCloseConfirmation::AlwaysPrompt,
+            true
+        ));
+        assert!(wants_quit_prompt(
+            config::WindowCloseConfirmation::AlwaysPrompt,
+            false
+        ));
     }
 }

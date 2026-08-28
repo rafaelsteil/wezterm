@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-27T22:20:00Z",
+  "updated": "2026-08-27T23:10:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "036 palette lists Windows CommandDef catalog (dimmed NYI). Launcher overlay not cloned. Matrices: docs/command-palette.json, docs/launcher.json. Wait for a palette user-try or the next bug list. Do not wire every listed command. Do not start charselect/copy-mode/search/cloned launcher/WSL domains unless asked. Backlog: 031 cursor, 026 monitor-move hang, Powerline, FPS HUD, ConPTY junk (018), scrollbar, max_fps. Do not start window/ cutover.",
+      "action": "039 skip close confirm for cmd.exe / skip list (038 dialog layer user-ok). Needs user-try of tab X / Ctrl+Q with no prompt. 036 palette dimmed NYI. Do not wire every listed command. Do not start charselect/copy-mode/search/cloned launcher/WSL domains unless asked. Backlog: 031 cursor, 026 monitor-move hang, Powerline, FPS HUD, ConPTY junk (018), scrollbar, max_fps. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok**. 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **not user-ok**. 030 integer cell grid **user-ok**. Cursor missing until backspace **backlog (031)**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok**. 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells — needs user-try. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -176,6 +176,21 @@
       "id": "command-palette-launcher-matrix",
       "status": "done",
       "notes": "036: docs/command-palette.json + docs/launcher.json. Classify each op call_core vs gpui_ui/window. GPUI palette lists Windows compute_default_actions (89 rows); 14 wired, rest dimmed. Launcher overlay not cloned. Needs user-try of the dimmed list."
+    },
+    {
+      "id": "dialog-cancel-restores-term-focus",
+      "status": "done",
+      "notes": "037: Ctrl+Q / tab X cancel left typing dead (032 only restored after confirm-close OK). Focus AppShell before dialog; on_ok+on_cancel request_terminal_focus; 400ms spawn_in retry. Superseded visually by 038 (dialog was never painted). Keep restore after dismiss."
+    },
+    {
+      "id": "mount-root-dialog-layer",
+      "status": "done",
+      "notes": "038: AppShell never called Root::render_dialog_layer. open_alert_dialog stole focus with no visible UI. Mount dialog/sheet/notification layers. **User-ok** 2026-08-27 (“great, that works now”)."
+    },
+    {
+      "id": "skip-close-confirmation-for-shells",
+      "status": "done",
+      "notes": "039: Tab X / Ctrl+Q always prompted. wezterm skip-lists cmd.exe. Keep AlertDialog; skip when can_close_without_prompting. Quit matches window-close not QuitApplication-always-prompt. cargo test --lib lua_ui 5/5. Needs user-try."
     },
     {
       "id": "delete-old-ui",
@@ -409,6 +424,24 @@
       "decision": "palette_and_launcher_ops_tracked_in_json_kind_call_core_vs_gpui",
       "rationale": "User asked to prepare for every command-palette and launcher operation and classify call-core vs GPUI surface, same pattern as lua-config.json. Live files docs/command-palette.json and docs/launcher.json. GPUI palette lists the full Windows default catalog with unimplemented rows dimmed. Do not clone the termwiz launcher overlay.",
       "record": "docs/decisions/036-command-palette-and-launcher-matrix.json"
+    },
+    {
+      "at": "2026-08-27T22:40:00Z",
+      "decision": "restore_appshell_focus_on_dialog_ok_and_cancel",
+      "rationale": "User: Ctrl+Q or tab X leaves Plus working but typing dead, including on a new tab. 032 only restored after confirm-close OK. Cancel restores the tab Close button; confirm_quit had no restore. Focus AppShell before open; on_ok and on_cancel request_terminal_focus. AlertDialog on_close wiped by build_surface.",
+      "record": "docs/decisions/037-dialog-cancel-restores-term-focus.json"
+    },
+    {
+      "at": "2026-08-27T22:55:00Z",
+      "decision": "appshell_renders_root_dialog_sheet_notification_layers",
+      "rationale": "User after 037: Ctrl+Q shows no confirmation. open_alert_dialog pushes Root.active_dialogs and steals focus; Root::render does not paint the list. First-level view must call render_dialog_layer. Invisible modal left typing dead.",
+      "record": "docs/decisions/038-mount-root-dialog-layer.json"
+    },
+    {
+      "at": "2026-08-27T23:10:00Z",
+      "decision": "close_confirm_skips_stateless_shells_like_wezterm",
+      "rationale": "User after 038: close confirmation is not default wezterm. Keep AlertDialog. Tab close uses skip_close_confirmation_for_processes_named. Quit/last-tab X matches window-close (skip list), not wezterm QuitApplication always-prompt.",
+      "record": "docs/decisions/039-skip-close-confirmation-for-shells.json"
     }
   ],
   "constraints": [
@@ -464,7 +497,7 @@
       "status": "poc_overlay",
       "legacy": "wezterm-gui/src/overlay/confirm.rs + overlay/prompt.rs",
       "gpui": "wezterm-gpui/src/confirm.rs",
-      "e2e": "Ctrl+W / tab close / Ctrl+Q / palette Rename tab — compile+build green, not yet user-tried"
+      "e2e": "038 mounts Root::render_dialog_layer in AppShell. User-ok 2026-08-27 (“great, that works now”). 039 skips prompt for cmd.exe."
     },
     "live_pty": {
       "status": "superseded_by_mux_localpane",
@@ -554,13 +587,31 @@
       "status": "poc_user_ok",
       "legacy": "wezterm-gui closes pane on exit_behavior Close; window focus stays on term",
       "gpui": "wezterm-gpui/src/term_pane.rs TermPaneEvent::Exited + is_dead skip; shell.rs request_terminal_focus",
-      "e2e": "user 2026-08-27: “it's better now.” Typing after tab X / `exit` on remaining tabs works. Last-tab spawn was wrong → 033."
+      "e2e": "user 2026-08-27: “it's better now.” Typing after tab X / `exit` on remaining tabs works. Last-tab spawn was wrong → 033. 037: Cancel / Ctrl+Q still killed typing — restore on dismiss; needs user-try."
     },
     "last_tab_exit_quits": {
       "status": "poc_user_ok",
       "legacy": "wezterm-gui Close + quit_when_all_windows_are_closed (default true)",
       "gpui": "wezterm-gpui/src/shell.rs dismiss_exited_tab → cx.quit() when last tab",
       "e2e": "user-ok 2026-08-27 (“works great”). Last-tab `exit` closes the app."
+    },
+    "dialog_cancel_restores_term_focus": {
+      "status": "poc_needs_user_try",
+      "legacy": "wezterm-gui confirm overlay; window focus stays on term after cancel",
+      "gpui": "wezterm-gpui/src/confirm.rs on_ok+on_cancel → shell.rs request_terminal_focus",
+      "e2e": "037 wired; user 2026-08-27: no dialog was shown (038)."
+    },
+    "mount_root_dialog_layer": {
+      "status": "poc_needs_user_try",
+      "legacy": "wezterm-gui termwiz confirm overlay is painted by the window",
+      "gpui": "wezterm-gpui/src/shell.rs Root::render_dialog_layer + sheet + notification",
+      "e2e": "038 wired 2026-08-27. User-ok (“great, that works now”)."
+    },
+    "skip_close_confirmation_for_shells": {
+      "status": "poc_needs_user_try",
+      "legacy": "wezterm-gui CloseCurrentTab confirm + skip_close_confirmation_for_processes_named; window_close_confirmation",
+      "gpui": "wezterm-gpui/src/lua_ui.rs wants_tab_close_prompt / wants_quit_prompt + TermPane::can_close_without_prompting",
+      "e2e": "039 wired. cmd.exe tab X / Ctrl+Q should not prompt. Needs user-try."
     },
     "scrollback_viewport": {
       "status": "poc_user_ok",
@@ -905,6 +956,21 @@
       "at": "2026-08-27T22:20:00Z",
       "id": "palette_and_launcher_matrix",
       "detail": "User asked to prepare for every command-palette and launcher op and classify call-core vs GPUI. Palette items: wezterm-gui CommandDef (commands.rs compute_default_actions + derive_command_from_key_assignment) plus launch_menu, mux domains/workspaces, InputMap, augment-command-palette. Execute is perform_key_assignment. Launcher is overlay/launcher.rs; right-click Plus; default flags dump launch_menu+domains+workspaces+COMMANDS+KEY_ASSIGNMENTS. GPUI palette now lists the Windows default catalog (89 rows, 14 wired, rest dimmed). Do not clone the launcher overlay. Unique launcher ops (WSL New Tab, unix attach, workspaces) are mux domain registration then a core call. Matrices: docs/command-palette.json, docs/launcher.json. Do not path-dep wezterm-gui."
+    },
+    {
+      "at": "2026-08-27T22:40:00Z",
+      "id": "dialog_cancel_ctrl_q_kills_typing",
+      "detail": "User 2026-08-27: Ctrl+Q or tab X leaves Plus/new tabs working but typing dead, including in a new tab. Same 032 focus bug. 032 only restored AppShell after confirm-close OK. Cancel restores the tab Close button (still alive); confirm_quit (Ctrl+Q / last-tab X) had no restore. AlertDialog.on_close is wiped by build_surface (copies button_props). 037: focus AppShell before open; on_ok+on_cancel request_terminal_focus; 400ms spawn_in retry actually focuses. User retry: no dialog was shown (038)."
+    },
+    {
+      "at": "2026-08-27T22:55:00Z",
+      "id": "dialog_layer_never_mounted",
+      "detail": "User after 037: Ctrl+Q shows no confirmation; nothing visible. Cause: AppShell never called Root::render_dialog_layer. gpui-component Root::render does not paint active_dialogs (docs + story + window_selection.rs). open_alert_dialog still pushed a dialog and focused it, so has_active_dialog stayed true and on_term_key no-op'd. 038 mounts dialog/sheet/notification layers in AppShell::render. User 2026-08-27: “great, that works now.”"
+    },
+    {
+      "at": "2026-08-27T23:10:00Z",
+      "id": "close_confirm_not_wezterm_default",
+      "detail": "User after 038: close confirmation is not default wezterm. wezterm CloseCurrentTab { confirm: true } still skips cmd.exe via skip_close_confirmation_for_processes_named. Window close AlwaysPrompt also skips skip-listed panes. 039: Tab X / Ctrl+Q skip when can_close_without_prompting; AlertDialog kept for vim/ssh and lua AlwaysPrompt when stateful. cargo test --lib lua_ui 5/5. Needs user-try."
     }
   ],
   "blockers": [],
@@ -939,6 +1005,9 @@
     "cursor_block_until_backspace_031": "parked_backlog",
     "tab_close_exit_keys_032": "user_better_now",
     "last_tab_exit_quits_033": "user_ok",
+    "dialog_cancel_restores_term_focus_037": "needs_user_try_038_dialog_was_invisible",
+    "mount_root_dialog_layer_038": "user_ok",
+    "skip_close_confirmation_for_shells_039": "needs_user_try",
     "command_palette_matrix": "docs/command-palette.json",
     "launcher_matrix": "docs/launcher.json"
   }

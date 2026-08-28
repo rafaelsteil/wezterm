@@ -3,7 +3,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, IconName, Sizable, TitleBar, WindowExt,
+    ActiveTheme, IconName, Root, Sizable, TitleBar, WindowExt,
     button::*,
     label::Label,
     menu::PopupMenuItem,
@@ -12,7 +12,9 @@ use gpui_component::{
 };
 
 use crate::confirm::{open_confirm, open_line_prompt};
-use crate::lua_ui::{active_after_close, format_tab_title, show_tab_bar};
+use crate::lua_ui::{
+    active_after_close, format_tab_title, show_tab_bar, wants_quit_prompt, wants_tab_close_prompt,
+};
 use crate::palette::{CommandPalette, PaletteEvent};
 use crate::shells::ShellProfile;
 use crate::term_pane::{TermPane, TermPaneEvent};
@@ -145,25 +147,43 @@ impl AppShell {
     }
 
     /// AppShell keys only work while this handle is focused. Tab X / dialog
-    /// restore a destroyed button handle; Plus can steal focus after we set it.
-    /// `focus_pending` on the next paint (no dialog) plus a delayed retry beats
-    /// gpui-component's 250ms dialog restore (032).
+    /// restore a Close-button handle (still alive on Cancel, reused id on OK);
+    /// Plus can steal focus after we set it. Immediate focus when no dialog,
+    /// then a delayed retry with the window (beats gpui-component's 250ms
+    /// restore). 032 only retried after confirm-close; Cancel / Ctrl+Q left
+    /// typing dead (037).
     fn request_terminal_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_pending = true;
         if !self.palette_open && !window.has_active_dialog(cx) {
             self.focus_terminal(window, cx);
         }
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             cx.background_executor()
-                .timer(std::time::Duration::from_millis(300))
+                .timer(std::time::Duration::from_millis(400))
                 .await;
-            this.update(cx, |this, cx| {
+            this.update_in(cx, |this, window, cx| {
+                if this.palette_open {
+                    return;
+                }
                 this.focus_pending = true;
+                if !window.has_active_dialog(cx) {
+                    this.focus_terminal(window, cx);
+                }
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Capture AppShell as the dialog's previous-focus target, then restore
+    /// after OK **or** Cancel (gpui-component otherwise restores the tab X).
+    fn dialog_restore(shell: Entity<Self>) -> impl Fn(&mut Window, &mut App) + 'static {
+        move |window, cx| {
+            shell.update(cx, |this, cx| {
+                this.request_terminal_focus(window, cx);
+            });
+        }
     }
 
     fn apply_command(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
@@ -353,8 +373,21 @@ impl AppShell {
             self.confirm_quit(window, cx);
             return;
         }
+        let skip = self.tabs[index]
+            .term
+            .read(cx)
+            .can_close_without_prompting(mux::pane::CloseReason::Tab);
+        if !wants_tab_close_prompt(skip) {
+            self.close_tab_at(index);
+            self.request_terminal_focus(window, cx);
+            cx.notify();
+            return;
+        }
         let title = self.tabs[index].title(cx);
+        // So the dialog's previous-focus restore is AppShell, not the tab X.
+        self.focus_terminal(window, cx);
         let shell = cx.entity();
+        let restore = Self::dialog_restore(shell.clone());
         open_confirm(
             window,
             cx,
@@ -369,10 +402,23 @@ impl AppShell {
                     cx.notify();
                 });
             },
+            restore,
         );
     }
 
     fn confirm_quit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let policy = config::configuration().window_close_confirmation;
+        let all_skip = self.tabs.iter().all(|t| {
+            t.term
+                .read(cx)
+                .can_close_without_prompting(mux::pane::CloseReason::Window)
+        });
+        if !wants_quit_prompt(policy, all_skip) {
+            cx.quit();
+            return;
+        }
+        self.focus_terminal(window, cx);
+        let restore = Self::dialog_restore(cx.entity());
         open_confirm(
             window,
             cx,
@@ -381,6 +427,7 @@ impl AppShell {
             "Quit",
             true,
             |_, cx| cx.quit(),
+            restore,
         );
     }
 
@@ -390,7 +437,9 @@ impl AppShell {
             .get(self.active)
             .map(|t| t.title(cx))
             .unwrap_or_default();
+        self.focus_terminal(window, cx);
         let shell = cx.entity();
+        let restore = Self::dialog_restore(shell.clone());
         open_line_prompt(
             window,
             cx,
@@ -415,10 +464,13 @@ impl AppShell {
                     cx.notify();
                 });
             },
+            restore,
         );
     }
 
     fn open_demo_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_terminal(window, cx);
+        let restore = Self::dialog_restore(cx.entity());
         open_confirm(
             window,
             cx,
@@ -429,6 +481,7 @@ impl AppShell {
             |window, cx| {
                 window.push_notification(Notification::info("POC: confirmed"), cx);
             },
+            restore,
         );
     }
 
@@ -487,10 +540,12 @@ impl AppShell {
     }
 
     fn on_close_tab(&mut self, _: &CloseTab, window: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         self.confirm_close_active(window, cx);
     }
 
     fn on_quit(&mut self, _: &QuitPoc, window: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         self.confirm_quit(window, cx);
     }
 
@@ -604,6 +659,11 @@ impl Render for AppShell {
             .get(active)
             .map(|t| t.term.read(cx).status_line())
             .unwrap_or_else(|| "no pane".into());
+        // Root::render does not paint these. Without them, Ctrl+Q / tab X
+        // push an AlertDialog that steals focus but never appears (038).
+        let sheet_layer = Root::render_sheet_layer(window, cx);
+        let dialog_layer = Root::render_dialog_layer(window, cx);
+        let notification_layer = Root::render_notification_layer(window, cx);
 
         div()
             .id("app-shell")
@@ -767,6 +827,9 @@ impl Render for AppShell {
                         ),
                 )
             })
+            .children(sheet_layer)
+            .children(dialog_layer)
+            .children(notification_layer)
             .when(self.show_fps, |this| {
                 this.child(gpui_fps::fps_monitor(window, cx))
             })

@@ -1,0 +1,6 @@
+{
+  "id": "039-skip-close-confirmation-for-shells",
+  "at": "2026-08-27T23:10:00Z",
+  "decision": "close_confirm_skips_stateless_shells_like_wezterm",
+  "rationale": "User after 038: close confirmation is not default wezterm. Keep AlertDialog. Tab close uses skip_close_confirmation_for_processes_named (cmd.exe). Quit/last-tab X matches window-close (AlwaysPrompt still skips if all panes are skip-listed), not wezterm QuitApplication which always prompts. Palette Confirmation demo unchanged. Do not start 026/031."
+}

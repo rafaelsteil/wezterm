@@ -1,0 +1,6 @@
+{
+  "id": "037-dialog-cancel-restores-term-focus",
+  "at": "2026-08-27T22:40:00Z",
+  "decision": "restore_appshell_focus_on_dialog_ok_and_cancel",
+  "rationale": "User: Ctrl+Q or tab X leaves Plus working but typing dead, including on a new tab. Same 032 focus bug: 032 only restored after confirm-close OK. Cancel/Escape restores the tab Close button; confirm_quit had no restore. Focus AppShell before opening the dialog (previous-focus target); on_ok and on_cancel both request_terminal_focus. AlertDialog on_close is wiped by build_surface. Delayed retry 400ms with spawn_in + focus_terminal. Do not start 026/031."
+}

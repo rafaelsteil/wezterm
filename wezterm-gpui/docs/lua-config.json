@@ -1,14 +1,14 @@
 {
   "id": "wezterm-gpui-lua-config",
   "schema_version": 1,
-  "updated": "2026-08-27T22:05:00Z",
+  "updated": "2026-08-27T23:10:00Z",
   "source_file": "C:\\Users\\rafael\\.wezterm.lua",
   "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
   "stats": {
-    "keys": 22,
+    "keys": 24,
     "user_ok": 11,
     "partial": 1,
-    "not_tested": 1,
+    "not_tested": 3,
     "no_visible_change": 3,
     "not_wired_or_parked": 6
   },
@@ -264,6 +264,26 @@
       "user_try": "n_a",
       "at": "2026-08-27T19:30:00Z",
       "notes": "Chevron is hardcoded cmd / PowerShell / pwsh. Do not honor unless asked."
+    },
+    {
+      "key": "skip_close_confirmation_for_processes_named",
+      "in_user_lua": false,
+      "user_value": "default includes cmd.exe, powershell.exe, pwsh.exe",
+      "slice": "039",
+      "gpui": "honored",
+      "user_try": "not_tested",
+      "at": "2026-08-27T23:10:00Z",
+      "notes": "Tab X / Ctrl+W skip prompt when Pane::can_close_without_prompting (same skip list as wezterm-gui)."
+    },
+    {
+      "key": "window_close_confirmation",
+      "in_user_lua": false,
+      "user_value": "AlwaysPrompt (default); POC skip-lists like window close",
+      "slice": "039",
+      "gpui": "honored",
+      "user_try": "not_tested",
+      "at": "2026-08-27T23:10:00Z",
+      "notes": "NeverPrompt → no dialog. AlwaysPrompt still skips cmd.exe. Ctrl+Q matches window-close, not wezterm QuitApplication always-prompt."
     }
   ]
 }

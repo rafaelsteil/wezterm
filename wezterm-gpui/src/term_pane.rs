@@ -147,6 +147,13 @@ impl TermPane {
         }
     }
 
+    pub fn can_close_without_prompting(&self, reason: mux::pane::CloseReason) -> bool {
+        match &self.live {
+            Ok(live) => live.pane.can_close_without_prompting(reason),
+            Err(_) => true,
+        }
+    }
+
     pub fn status_line(&self) -> String {
         let mode = self.paint_mode();
         let Ok(live) = &self.live else {
