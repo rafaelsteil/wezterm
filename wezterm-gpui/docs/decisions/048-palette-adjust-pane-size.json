@@ -1,0 +1,6 @@
+{
+  "id": "048-palette-adjust-pane-size",
+  "at": "2026-08-28T03:50:00Z",
+  "decision": "palette_adjust_pane_size_resizable_state",
+  "rationale": "User after 047: continue on command palette items. 046 skipped AdjustPaneSize because the live divider is gpui-component ResizableState. Keep one ResizableState per split id and resize_panel(0) by ± one cell, matching mux (first child shrinks on Left/Up). Do not start SpawnWindow, ActivateWindow, charselect, copy-mode, search, cloned launcher, WSL, PaneSelect, or ReloadConfiguration. Do not start 026/031."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "049-palette-complete",
+  "at": "2026-08-28T04:20:00Z",
+  "decision": "palette_catalog_all_wired_via_picker_and_second_window",
+  "rationale": "User asked to implement everything in the command palette in one shot and stop only when complete. Wire the remaining 30 listed PALETTE_COMMANDS rows: second GPUI window, ActivateWindow via cx.windows(), config::reload, clipboard as primary, notify for DetachDomain/ClearKeyTableStack, and a shared searchable Picker for launcher/tab nav/pane select/charselect/search/quickselect/debug. Copy mode is a simplified TermPane key mode (hjkl/v/y). Do not clone termwiz overlays. Do not register WSL/unix domains. Do not start 026/031 or window/ cutover."
+}

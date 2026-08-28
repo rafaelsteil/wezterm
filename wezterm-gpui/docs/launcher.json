@@ -1,9 +1,9 @@
 {
   "id": "wezterm-gpui-launcher",
   "schema_version": 1,
-  "updated": "2026-08-27T22:20:00Z",
+  "updated": "2026-08-28T04:20:00Z",
   "legacy": "wezterm-gui/src/overlay/launcher.rs. Trigger: right-click tab-bar Plus (mouseevent do_new_tab_button_click → ShowLauncher). Also ShowLauncher / ShowLauncherArgs / ShowTabNavigator key assignments.",
-  "gpui": "not cloned as a termwiz overlay. 027 chevron is the GPUI new-tab menu (cmd / PowerShell). Palette lists ShowLauncher dimmed. Unique ops tracked here; COMMANDS+KEY_ASSIGNMENTS overlap docs/command-palette.json.",
+  "gpui": "049 searchable Picker (not a termwiz clone). 027 chevron is still the new-tab menu. ShowLauncher / ShowTabNavigator Wired in the palette. Unique ops tracked here; COMMANDS+KEY_ASSIGNMENTS overlap docs/command-palette.json.",
   "note": "Per-operation tracker for the wezterm-gui Launcher. STATE.json points here. Append; never delete rows. gpui: wired | listed | needs_mux | needs_gpui | parked | n_a. kind: call_core | gpui_window | gpui_ui | dynamic. user_try: ok | not_tested | n_a. Recommendation: do not clone the overlay. Domain/workspace/launch_menu are mux calls; the rest is a second dump of the palette.",
   "stats": {
     "sources": 6,
@@ -30,8 +30,8 @@
       "id": "LAUNCH_MENU_ITEMS",
       "kind": "dynamic",
       "core": "config.launch_menu → SpawnCommandInNewTab",
-      "gpui": "parked",
-      "notes": "User lua. Do not honor unless asked (027/034). Same as command-palette dynamic.launch_menu."
+      "gpui": "wired",
+      "notes": "049 ShowLauncher Picker includes lua launch_menu as New Tab. Same as command-palette dynamic.launch_menu."
     },
     {
       "id": "DOMAINS",
@@ -51,8 +51,8 @@
       "id": "TABS",
       "kind": "gpui_window",
       "core": "ActivateTab(idx) for each mux window tab",
-      "gpui": "n_a",
-      "notes": "Not in default ShowLauncher. ShowTabNavigator only. Tab bar already switches tabs."
+      "gpui": "wired",
+      "notes": "049 ShowTabNavigator Picker. Tab bar already switches tabs."
     },
     {
       "id": "COMMANDS",

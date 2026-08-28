@@ -31,10 +31,26 @@ impl PaneDir {
             _ => None,
         }
     }
+
+    /// Parent split axis mux walks for AdjustPaneSize / ActivatePaneDirection.
+    pub fn split_axis(self) -> SplitAxis {
+        match self {
+            Self::Left | Self::Right => SplitAxis::Horizontal,
+            Self::Up | Self::Down => SplitAxis::Vertical,
+        }
+    }
+
+    /// Mux always mutates the first child: Left/Up shrinks it, Right/Down grows it.
+    pub fn first_child_delta_sign(self) -> f32 {
+        match self {
+            Self::Left | Self::Up => -1.0,
+            Self::Right | Self::Down => 1.0,
+        }
+    }
 }
 
 /// Unit-rect used only to pick a neighbor. Equal halves, not the live
-/// gpui-component divider (AdjustPaneSize stays listed).
+/// gpui-component divider (AdjustPaneSize uses ResizableState).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LeafRect {
     x: u32,
@@ -65,6 +81,54 @@ impl LayoutNode {
             Self::Split { first, second, .. } => {
                 first.collect_leaves(out);
                 second.collect_leaves(out);
+            }
+        }
+    }
+
+    pub fn collect_split_ids(&self, out: &mut Vec<u64>) {
+        if let Self::Split {
+            id,
+            first,
+            second,
+            ..
+        } = self
+        {
+            out.push(*id);
+            first.collect_split_ids(out);
+            second.collect_split_ids(out);
+        }
+    }
+
+    fn contains_leaf(&self, leaf: usize) -> bool {
+        match self {
+            Self::Leaf(i) => *i == leaf,
+            Self::Split { first, second, .. } => {
+                first.contains_leaf(leaf) || second.contains_leaf(leaf)
+            }
+        }
+    }
+
+    /// Nearest ancestor split of `leaf` whose axis matches (mux walk-up).
+    pub fn ancestor_split(&self, leaf: usize, axis: SplitAxis) -> Option<u64> {
+        match self {
+            Self::Leaf(_) => None,
+            Self::Split {
+                axis: a,
+                id,
+                first,
+                second,
+            } => {
+                let in_first = first.contains_leaf(leaf);
+                let in_second = second.contains_leaf(leaf);
+                if !in_first && !in_second {
+                    return None;
+                }
+                let deeper = if in_first {
+                    first.ancestor_split(leaf, axis)
+                } else {
+                    second.ancestor_split(leaf, axis)
+                };
+                deeper.or_else(|| (*a == axis).then_some(*id))
             }
         }
     }
@@ -286,6 +350,11 @@ impl<T> SplitLayout<T> {
         self.active = i;
         true
     }
+
+    /// Split id of the nearest matching ancestor of the active leaf.
+    pub fn ancestor_split(&self, axis: SplitAxis) -> Option<u64> {
+        self.root.ancestor_split(self.active_index(), axis)
+    }
 }
 
 fn overlap_len(a0: u32, a_len: u32, b0: u32, b_len: u32) -> u32 {
@@ -316,6 +385,31 @@ impl<T: PartialEq> SplitLayout<T> {
         let _ = self.root.split_leaf(at, axis, new_i, split_id);
         self.panes.push(new_pane);
         self.active = new_i;
+    }
+
+    /// Swap the active leaf with `other`. `keep_focus` follows the original pane.
+    pub fn swap_active_with(&mut self, other: usize, keep_focus: bool) {
+        let a = self.active_index();
+        if other >= self.panes.len() || other == a {
+            return;
+        }
+        self.panes.swap(a, other);
+        if keep_focus {
+            self.active = other;
+        }
+    }
+
+    /// Remove `pane` and return it. Second value is true when the tab is empty.
+    pub fn extract_pane(&mut self, pane: &T) -> Option<(T, bool)>
+    where
+        T: Clone + PartialEq,
+    {
+        if !self.contains(pane) {
+            return None;
+        }
+        let taken = pane.clone();
+        let empty = self.remove_pane(pane);
+        Some((taken, empty))
     }
 
     /// Cycle pane identities around leaf slots. Tree shape stays.
@@ -509,6 +603,31 @@ mod tests {
     }
 
     #[test]
+    fn ancestor_split_picks_nearest_matching_axis() {
+        let mut layout = SplitLayout::leaf("a");
+        layout.split(SplitAxis::Horizontal, "b", 1);
+        layout.split(SplitAxis::Vertical, "c", 2);
+        // a | (b / c), active = c
+        assert_eq!(
+            layout.ancestor_split(SplitAxis::Vertical),
+            Some(2),
+            "Up/Down hits the inner V split"
+        );
+        assert_eq!(
+            layout.ancestor_split(SplitAxis::Horizontal),
+            Some(1),
+            "Left/Right walks up to the outer H split"
+        );
+        assert!(layout.set_active_pane(&"a"));
+        assert_eq!(layout.ancestor_split(SplitAxis::Horizontal), Some(1));
+        assert_eq!(
+            layout.ancestor_split(SplitAxis::Vertical),
+            None,
+            "a has no V ancestor"
+        );
+    }
+
+    #[test]
     fn zoom_requires_two_panes_and_clears_on_split() {
         let mut layout = SplitLayout::leaf("a");
         layout.toggle_zoom();
@@ -524,5 +643,32 @@ mod tests {
         assert!(layout.is_zoomed());
         assert!(!layout.remove_pane(&"b"));
         assert!(!layout.is_zoomed());
+    }
+
+    #[test]
+    fn extract_pane_returns_taken_and_empty_flag() {
+        let mut layout = SplitLayout::leaf("a");
+        layout.split(SplitAxis::Horizontal, "b", 1);
+        let (taken, empty) = layout.extract_pane(&"b").expect("b");
+        assert_eq!(taken, "b");
+        assert!(!empty);
+        assert_eq!(layout.panes(), &["a"]);
+        let (taken, empty) = layout.extract_pane(&"a").expect("a");
+        assert_eq!(taken, "a");
+        assert!(empty);
+        assert!(layout.panes().is_empty());
+    }
+
+    #[test]
+    fn swap_active_keep_focus_follows_original() {
+        let mut layout = SplitLayout::leaf("a");
+        layout.split(SplitAxis::Horizontal, "b", 1);
+        assert_eq!(layout.active_pane(), Some(&"b"));
+        layout.swap_active_with(0, true);
+        assert_eq!(layout.active_pane(), Some(&"b"));
+        assert_eq!(layout.panes(), &["b", "a"]);
+        layout.swap_active_with(1, false);
+        assert_eq!(layout.active_pane(), Some(&"a"));
+        assert_eq!(layout.panes(), &["a", "b"]);
     }
 }

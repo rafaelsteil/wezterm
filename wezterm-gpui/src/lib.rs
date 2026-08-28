@@ -15,6 +15,7 @@ mod hello;
 mod lua_ui;
 mod mux_host;
 mod palette;
+mod picker;
 pub mod shell;
 mod shells;
 mod split_layout;

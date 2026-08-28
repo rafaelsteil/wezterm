@@ -28,7 +28,7 @@ impl EventEmitter<PaletteEvent> for CommandPalette {}
 impl CommandPalette {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let query = cx.new(|cx| {
-            InputState::new(window, cx).placeholder("Type a command…  not-yet-implemented rows are dimmed")
+            InputState::new(window, cx).placeholder("Type a command…")
         });
         // InputState notifies on caret blink and arrow-key cursor moves, not
         // only on text. observe() used to zero selected on every notify, so
@@ -228,7 +228,7 @@ impl Render for CommandPalette {
 
 /// Lua `command_palette_bg_color` / `command_palette_fg_color` (defaults
 /// `#333333` / gray 0.75). Selected row inverts these, same as wezterm-gui.
-fn palette_chrome() -> (Hsla, Hsla) {
+pub(crate) fn palette_chrome() -> (Hsla, Hsla) {
     let cfg = config::configuration();
     (
         srgba_hsla(&cfg.command_palette_bg_color),

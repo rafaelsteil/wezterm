@@ -1,15 +1,20 @@
 //! Sibling-window app chrome. Shells are mux `LocalPane`; paint prefers wezterm-font.
 
+use std::collections::HashMap;
+use std::ffi::OsString;
+
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, IconName, Root, Sizable, TitleBar, WindowExt, h_resizable, v_resizable,
+    ActiveTheme, IconName, ResizableState, Root, Sizable, TitleBar, WindowExt, h_resizable,
+    v_resizable,
     button::*,
     label::Label,
     menu::PopupMenuItem,
     notification::Notification,
     tab::{Tab, TabBar},
 };
+use portable_pty::CommandBuilder;
 
 use crate::confirm::{open_confirm, open_line_prompt};
 use crate::lua_ui::{
@@ -18,6 +23,7 @@ use crate::lua_ui::{
     wants_tab_close_prompt,
 };
 use crate::palette::{CommandPalette, PaletteEvent};
+use crate::picker::{char_select_items, Picker, PickerEvent, PickerItem};
 use crate::shells::ShellProfile;
 use crate::split_layout::{LayoutNode, PaneDir, SplitAxis, SplitLayout};
 use crate::term_pane::{TermPane, TermPaneEvent};
@@ -65,6 +71,8 @@ pub fn bind_keys(cx: &mut App) {
 struct ShellTab {
     title_override: Option<String>,
     layout: SplitLayout<Entity<TermPane>>,
+    /// One gpui-component divider state per split node (AdjustPaneSize).
+    split_states: HashMap<u64, Entity<ResizableState>>,
 }
 
 impl ShellTab {
@@ -83,6 +91,27 @@ impl ShellTab {
             .iter()
             .all(|term| term.read(cx).can_close_without_prompting(reason))
     }
+
+    fn retain_split_states(&mut self) {
+        let mut ids = Vec::new();
+        self.layout.root().collect_split_ids(&mut ids);
+        self.split_states.retain(|id, _| ids.contains(id));
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PickerKind {
+    Launcher,
+    TabNav,
+    PaneSelectActivate,
+    PaneSelectSwap,
+    PaneSelectSwapKeep,
+    PaneSelectMoveTab,
+    PaneSelectMoveWindow,
+    CharSelect,
+    Search,
+    QuickSelect,
+    Debug,
 }
 
 pub struct AppShell {
@@ -94,6 +123,8 @@ pub struct AppShell {
     font_px: f32,
     palette: Entity<CommandPalette>,
     palette_open: bool,
+    picker: Entity<Picker>,
+    picker_kind: Option<PickerKind>,
     /// gpui-fps HUD. Off by default (019). Ctrl+Shift+F toggles.
     /// While visible the stock monitor is continuous (sustain FPS).
     show_fps: bool,
@@ -117,6 +148,14 @@ impl Focusable for AppShell {
 
 impl AppShell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::build(window, cx, None)
+    }
+
+    fn build(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        initial: Option<Entity<TermPane>>,
+    ) -> Self {
         let palette = cx.new(|cx| CommandPalette::new(window, cx));
         cx.subscribe_in(&palette, window, |this, _, event, window, cx| {
             match event {
@@ -136,13 +175,40 @@ impl AppShell {
         })
         .detach();
 
+        let picker = cx.new(|cx| Picker::new(window, cx));
+        cx.subscribe_in(&picker, window, |this, _, event, window, cx| {
+            match event {
+                PickerEvent::Confirmed(id) => {
+                    let kind = this.picker_kind.take();
+                    this.apply_picker(kind, id.clone(), window, cx);
+                    if this.picker_kind.is_none() && !this.palette_open {
+                        this.request_terminal_focus(window, cx);
+                    }
+                }
+                PickerEvent::Dismissed => {
+                    this.picker_kind = None;
+                    window.focus(&this.focus_handle, cx);
+                }
+            }
+            cx.notify();
+        })
+        .detach();
+
         let font_px = crate::mux_host::config_font_size();
         let focus_handle = cx.focus_handle();
         let shells = crate::shells::available_shells();
         window.focus(&focus_handle, cx);
         window.activate_window();
         let default = shells.first().cloned().unwrap_or_else(crate::shells::default_shell);
-        let first = Self::new_tab(font_px, focus_handle.clone(), &default, cx);
+        let first = if let Some(pane) = initial {
+            ShellTab {
+                title_override: None,
+                layout: SplitLayout::leaf(pane),
+                split_states: HashMap::new(),
+            }
+        } else {
+            Self::new_tab(font_px, focus_handle.clone(), &default, cx)
+        };
         let first_term = first.layout.active_pane().cloned();
         let mut this = Self {
             focus_handle: focus_handle.clone(),
@@ -152,6 +218,8 @@ impl AppShell {
             font_px,
             palette,
             palette_open: false,
+            picker,
+            picker_kind: None,
             show_fps: false,
             focus_pending: true,
             shells,
@@ -178,7 +246,7 @@ impl AppShell {
     /// typing dead (037).
     fn request_terminal_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.focus_pending = true;
-        if !self.palette_open && !window.has_active_dialog(cx) {
+        if !self.overlay_open() && !window.has_active_dialog(cx) {
             self.focus_terminal(window, cx);
         }
         cx.spawn_in(window, async move |this, cx| {
@@ -300,6 +368,41 @@ impl AppShell {
                 self.paste_clipboard(window, cx, true);
             }
             "ActivateCommandPalette" => self.palette_open = true,
+            "ReloadConfiguration" => self.reload_configuration(window, cx),
+            "SpawnWindow" => self.spawn_window(cx),
+            "DetachDomain.CurrentPaneDomain" => {
+                window.push_notification(
+                    Notification::info("The local domain cannot be detached"),
+                    cx,
+                );
+            }
+            "ShowLauncher" => self.open_picker(PickerKind::Launcher, window, cx),
+            "PasteFrom.PrimarySelection" => self.paste_clipboard(window, cx, true),
+            "CopyTo.PrimarySelection" => self.copy_selection(window, cx, true),
+            "QuickSelect" => self.open_picker(PickerKind::QuickSelect, window, cx),
+            "CharSelect" => self.open_picker(PickerKind::CharSelect, window, cx),
+            "ActivateCopyMode" => self.enter_copy_mode(cx),
+            "ClearKeyTableStack" => {
+                window.push_notification(Notification::info("Key table stack is empty"), cx);
+            }
+            "Search" => self.open_picker(PickerKind::Search, window, cx),
+            "ShowTabNavigator" => self.open_picker(PickerKind::TabNav, window, cx),
+            "ShowDebugOverlay" => self.open_picker(PickerKind::Debug, window, cx),
+            "PaneSelect.Activate" => {
+                self.open_picker(PickerKind::PaneSelectActivate, window, cx)
+            }
+            "PaneSelect.SwapWithActive" => {
+                self.open_picker(PickerKind::PaneSelectSwap, window, cx)
+            }
+            "PaneSelect.SwapWithActiveKeepFocus" => {
+                self.open_picker(PickerKind::PaneSelectSwapKeep, window, cx)
+            }
+            "PaneSelect.MoveToNewTab" => {
+                self.open_picker(PickerKind::PaneSelectMoveTab, window, cx)
+            }
+            "PaneSelect.MoveToNewWindow" => {
+                self.open_picker(PickerKind::PaneSelectMoveWindow, window, cx)
+            }
             "RenameTab" | "PromptInputLine" => {
                 self.open_rename_prompt(window, cx);
             }
@@ -328,6 +431,18 @@ impl AppShell {
                         self.rotate_panes(true, cx);
                     } else if rot == "CounterClockwise" {
                         self.rotate_panes(false, cx);
+                    }
+                } else if let Some(n) = id.strip_prefix("ActivateWindowRelative.") {
+                    if let Ok(delta) = n.parse::<isize>() {
+                        self.activate_window_relative(delta, window, cx);
+                    }
+                } else if let Some(n) = id.strip_prefix("ActivateWindow.") {
+                    if let Ok(n) = n.parse::<usize>() {
+                        self.activate_window_at(n, window, cx);
+                    }
+                } else if let Some(dir) = id.strip_prefix("AdjustPaneSize.") {
+                    if let Some(dir) = PaneDir::from_palette_suffix(dir) {
+                        self.adjust_pane_size(dir, window, cx);
                     }
                 } else if let Some(level) = WindowZOrder::from_palette_id(id) {
                     self.set_window_level(level, window);
@@ -369,6 +484,7 @@ impl AppShell {
         ShellTab {
             title_override: None,
             layout: SplitLayout::leaf(term),
+            split_states: HashMap::new(),
         }
     }
 
@@ -477,6 +593,7 @@ impl AppShell {
             return;
         };
         let empty = tab.layout.remove_pane(&pane);
+        tab.retain_split_states();
         if empty && self.remove_tab_at(tab_index) {
             cx.quit();
             return;
@@ -621,8 +738,10 @@ impl AppShell {
         });
         let id = self.next_split_id;
         self.next_split_id += 1;
+        let state = cx.new(|_| ResizableState::default());
         if let Some(tab) = self.tabs.get_mut(self.active) {
             tab.layout.split(axis, term.clone(), id);
+            tab.split_states.insert(id, state);
         }
         self.watch_pane(term, cx);
         self.sync_pane_focus(cx);
@@ -660,6 +779,526 @@ impl AppShell {
             tab.layout.toggle_zoom();
         }
         self.sync_pane_focus(cx);
+        cx.notify();
+    }
+
+    fn adjust_pane_size(&mut self, dir: PaneDir, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if tab.layout.is_zoomed() {
+            return;
+        }
+        let Some(split_id) = tab.layout.ancestor_split(dir.split_axis()) else {
+            return;
+        };
+        let Some(state) = tab.split_states.get(&split_id).cloned() else {
+            return;
+        };
+        let Some(term) = tab.layout.active_pane().cloned() else {
+            return;
+        };
+        let (cell_w, cell_h) = term.read(cx).cell_px();
+        let step = match dir.split_axis() {
+            SplitAxis::Horizontal => cell_w,
+            SplitAxis::Vertical => cell_h,
+        };
+        let delta = px(step * dir.first_child_delta_sign());
+        state.update(cx, |state, cx| {
+            let Some(&current) = state.sizes().first() else {
+                return;
+            };
+            state.resize_panel(0, current + delta, window, cx);
+        });
+        cx.notify();
+    }
+
+    fn overlay_open(&self) -> bool {
+        self.palette_open || self.picker_kind.is_some()
+    }
+
+    fn close_overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.palette_open {
+            self.close_palette(window, cx);
+        }
+        if self.picker_kind.is_some() {
+            self.close_picker(window, cx);
+        }
+    }
+
+    fn close_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.picker_kind.is_none() {
+            return;
+        }
+        self.picker.update(cx, |p, cx| p.dismiss(cx));
+        self.picker_kind = None;
+        window.focus(&self.focus_handle, cx);
+        cx.notify();
+    }
+
+    fn open_picker(&mut self, kind: PickerKind, window: &mut Window, cx: &mut Context<Self>) {
+        self.palette_open = false;
+        let items = self.picker_items(kind, cx);
+        let title = match kind {
+            PickerKind::Launcher => "Launcher",
+            PickerKind::TabNav => "Tab Navigator",
+            PickerKind::PaneSelectActivate => "Select pane",
+            PickerKind::PaneSelectSwap => "Swap with pane",
+            PickerKind::PaneSelectSwapKeep => "Swap with pane (keep focus)",
+            PickerKind::PaneSelectMoveTab => "Move pane to new tab",
+            PickerKind::PaneSelectMoveWindow => "Move pane to new window",
+            PickerKind::CharSelect => "Character / Emoji",
+            PickerKind::Search => "Search pane output",
+            PickerKind::QuickSelect => "Quick Select",
+            PickerKind::Debug => "Debug overlay",
+        };
+        self.picker_kind = Some(kind);
+        self.picker.update(cx, |picker, cx| {
+            picker.open(title, items, window, cx);
+        });
+        cx.notify();
+    }
+
+    fn picker_items(&self, kind: PickerKind, cx: &App) -> Vec<PickerItem> {
+        match kind {
+            PickerKind::Launcher => self.launcher_items(cx),
+            PickerKind::TabNav => self
+                .tabs
+                .iter()
+                .enumerate()
+                .map(|(i, t)| PickerItem {
+                    id: format!("tab:{i}"),
+                    title: t.title(cx),
+                    subtitle: format!("Tab {}", i + 1),
+                })
+                .collect(),
+            PickerKind::PaneSelectActivate
+            | PickerKind::PaneSelectSwap
+            | PickerKind::PaneSelectSwapKeep
+            | PickerKind::PaneSelectMoveTab
+            | PickerKind::PaneSelectMoveWindow => self.pane_items(cx),
+            PickerKind::CharSelect => char_select_items(),
+            PickerKind::Search => {
+                let q = ""; // filled by picker filter on titles; seed with recent lines
+                self.search_seed_items(cx, q)
+            }
+            PickerKind::QuickSelect => self.quick_select_items(cx),
+            PickerKind::Debug => {
+                let dump = self
+                    .tabs
+                    .get(self.active)
+                    .and_then(|t| t.layout.active_pane())
+                    .map(|p| p.read(cx).debug_dump())
+                    .unwrap_or_else(|| "no pane".into());
+                vec![
+                    PickerItem {
+                        id: "debug:copy".into(),
+                        title: "Copy debug dump to clipboard".into(),
+                        subtitle: dump.lines().next().unwrap_or("").to_string(),
+                    },
+                    PickerItem {
+                        id: "debug:dump".into(),
+                        title: dump,
+                        subtitle: crate::mux_host::config_status(),
+                    },
+                ]
+            }
+        }
+    }
+
+    fn launcher_items(&self, cx: &App) -> Vec<PickerItem> {
+        let mut items = Vec::new();
+        for (i, profile) in self.shells.iter().enumerate() {
+            items.push(PickerItem {
+                id: format!("launch:tab:{i}"),
+                title: format!("New Tab — {}", profile.label),
+                subtitle: "Spawn".into(),
+            });
+        }
+        items.push(PickerItem {
+            id: "launch:window".into(),
+            title: "New Window".into(),
+            subtitle: "Spawn".into(),
+        });
+        items.push(PickerItem {
+            id: "launch:splith".into(),
+            title: "Split Horizontally".into(),
+            subtitle: "Current tab".into(),
+        });
+        items.push(PickerItem {
+            id: "launch:splitv".into(),
+            title: "Split Vertically".into(),
+            subtitle: "Current tab".into(),
+        });
+        for (i, t) in self.tabs.iter().enumerate() {
+            items.push(PickerItem {
+                id: format!("tab:{i}"),
+                title: format!("Activate tab: {}", t.title(cx)),
+                subtitle: format!("Tab {}", i + 1),
+            });
+        }
+        let cfg = config::configuration();
+        for (i, cmd) in cfg.launch_menu.iter().enumerate() {
+            let label = cmd
+                .label_for_palette()
+                .unwrap_or_else(|| format!("launch_menu #{i}"));
+            items.push(PickerItem {
+                id: format!("launch:menu:{i}"),
+                title: format!("{label} (New Tab)"),
+                subtitle: "lua launch_menu".into(),
+            });
+        }
+        items
+    }
+
+    fn pane_items(&self, cx: &App) -> Vec<PickerItem> {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return Vec::new();
+        };
+        let alphabet = "123456789abcdefghijklmnopqrstuvwxyz";
+        tab.layout
+            .panes()
+            .iter()
+            .enumerate()
+            .map(|(i, pane)| {
+                let letter = alphabet.chars().nth(i).unwrap_or('?');
+                let active = if i == tab.layout.active_index() {
+                    " (active)"
+                } else {
+                    ""
+                };
+                PickerItem {
+                    id: format!("pane:{i}"),
+                    title: format!("{letter}: {}{active}", pane.read(cx).title()),
+                    subtitle: format!("Pane {}", i + 1),
+                }
+            })
+            .collect()
+    }
+
+    fn search_seed_items(&self, cx: &App, _q: &str) -> Vec<PickerItem> {
+        let Some(term) = self
+            .tabs
+            .get(self.active)
+            .and_then(|t| t.layout.active_pane())
+        else {
+            return Vec::new();
+        };
+        let text = term.read(cx).visible_plain_text();
+        text.lines()
+            .enumerate()
+            .filter(|(_, line)| !line.trim().is_empty())
+            .take(200)
+            .map(|(i, line)| PickerItem {
+                id: format!("search:{i}:{line}"),
+                title: line.to_string(),
+                subtitle: format!("Visible line {}", i + 1),
+            })
+            .collect()
+    }
+
+    fn quick_select_items(&self, cx: &App) -> Vec<PickerItem> {
+        let Some(term) = self
+            .tabs
+            .get(self.active)
+            .and_then(|t| t.layout.active_pane())
+        else {
+            return Vec::new();
+        };
+        let text = term.read(cx).visible_plain_text();
+        let mut seen = HashMap::<String, ()>::new();
+        let mut items = Vec::new();
+        for token in text.split_whitespace() {
+            let t = token.trim_matches(|c: char| {
+                matches!(c, '"' | '\'' | '`' | ',' | ';' | ')' | '(' | '[' | ']')
+            });
+            if t.len() < 4 || seen.contains_key(t) {
+                continue;
+            }
+            seen.insert(t.to_string(), ());
+            items.push(PickerItem {
+                id: format!("qsel:{t}"),
+                title: t.to_string(),
+                subtitle: "Copy".into(),
+            });
+            if items.len() >= 80 {
+                break;
+            }
+        }
+        items
+    }
+
+    fn apply_picker(
+        &mut self,
+        kind: Option<PickerKind>,
+        id: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match kind {
+            Some(PickerKind::CharSelect) => {
+                if let Some(ch) = id.strip_prefix("char:") {
+                    self.with_active_term(cx, |term, cx| {
+                        if term.paste_text(ch) {
+                            cx.notify();
+                        }
+                    });
+                }
+            }
+            Some(PickerKind::QuickSelect) => {
+                if let Some(text) = id.strip_prefix("qsel:") {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+                    window.push_notification(Notification::info("Copied"), cx);
+                }
+            }
+            Some(PickerKind::Search) => {
+                if let Some(rest) = id.strip_prefix("search:") {
+                    let line = rest.splitn(2, ':').nth(1).unwrap_or(rest);
+                    self.with_active_term(cx, |term, cx| {
+                        let hits = term.search_hits(line, 1);
+                        if let Some((row, _)) = hits.first() {
+                            term.jump_to_row(*row);
+                            cx.notify();
+                        }
+                    });
+                }
+            }
+            Some(PickerKind::Debug) => {
+                if id == "debug:copy" || id == "debug:dump" {
+                    let dump = self
+                        .tabs
+                        .get(self.active)
+                        .and_then(|t| t.layout.active_pane())
+                        .map(|p| p.read(cx).debug_dump())
+                        .unwrap_or_default();
+                    cx.write_to_clipboard(ClipboardItem::new_string(dump));
+                    window.push_notification(Notification::info("Copied debug dump"), cx);
+                }
+            }
+            Some(PickerKind::TabNav) | Some(PickerKind::Launcher) => {
+                self.apply_launcher_id(&id, window, cx);
+            }
+            Some(PickerKind::PaneSelectActivate) => self.pane_select_activate(&id, cx),
+            Some(PickerKind::PaneSelectSwap) => self.pane_select_swap(&id, false, cx),
+            Some(PickerKind::PaneSelectSwapKeep) => self.pane_select_swap(&id, true, cx),
+            Some(PickerKind::PaneSelectMoveTab) => self.pane_select_move_tab(&id, window, cx),
+            Some(PickerKind::PaneSelectMoveWindow) => {
+                self.pane_select_move_window(&id, window, cx)
+            }
+            None => {}
+        }
+    }
+
+    fn apply_launcher_id(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(n) = id.strip_prefix("tab:") {
+            if let Ok(i) = n.parse::<usize>() {
+                self.activate_tab(i, cx);
+            }
+            return;
+        }
+        if let Some(n) = id.strip_prefix("launch:tab:") {
+            if let Ok(i) = n.parse::<usize>() {
+                if let Some(profile) = self.shells.get(i).cloned() {
+                    self.spawn_profile(&profile, window, cx);
+                }
+            }
+            return;
+        }
+        if id == "launch:window" {
+            self.spawn_window(cx);
+            return;
+        }
+        if id == "launch:splith" {
+            self.split_active(SplitAxis::Horizontal, window, cx);
+            return;
+        }
+        if id == "launch:splitv" {
+            self.split_active(SplitAxis::Vertical, window, cx);
+            return;
+        }
+        if let Some(n) = id.strip_prefix("launch:menu:") {
+            if let Ok(i) = n.parse::<usize>() {
+                self.spawn_launch_menu_item(i, window, cx);
+            }
+        }
+    }
+
+    fn spawn_launch_menu_item(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let cfg = config::configuration();
+        let Some(cmd) = cfg.launch_menu.get(index).cloned() else {
+            return;
+        };
+        let builder = spawn_command_builder(&cmd);
+        let label = cmd
+            .label_for_palette()
+            .unwrap_or_else(|| "launch_menu".into());
+        let profile = ShellProfile {
+            id: "launch_menu",
+            label,
+            argv: builder_argv(&builder),
+        };
+        self.spawn_profile(&profile, window, cx);
+    }
+
+    fn pane_index(id: &str) -> Option<usize> {
+        id.strip_prefix("pane:")?.parse().ok()
+    }
+
+    fn pane_select_activate(&mut self, id: &str, cx: &mut Context<Self>) {
+        let Some(i) = Self::pane_index(id) else {
+            return;
+        };
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            if let Some(pane) = tab.layout.panes().get(i).cloned() {
+                let _ = tab.layout.set_active_pane(&pane);
+            }
+        }
+        self.sync_pane_focus(cx);
+        cx.notify();
+    }
+
+    fn pane_select_swap(&mut self, id: &str, keep_focus: bool, cx: &mut Context<Self>) {
+        let Some(i) = Self::pane_index(id) else {
+            return;
+        };
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.layout.swap_active_with(i, keep_focus);
+        }
+        self.sync_pane_focus(cx);
+        cx.notify();
+    }
+
+    fn pane_select_move_tab(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(i) = Self::pane_index(id) else {
+            return;
+        };
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if tab.layout.pane_count() < 2 {
+            window.push_notification(Notification::info("Need more than one pane"), cx);
+            return;
+        }
+        let Some(pane) = tab.layout.panes().get(i).cloned() else {
+            return;
+        };
+        let tab_index = self.active;
+        let extracted = self.tabs[tab_index].layout.extract_pane(&pane);
+        self.tabs[tab_index].retain_split_states();
+        let Some((pane, empty)) = extracted else {
+            return;
+        };
+        if empty {
+            let _ = self.remove_tab_at(tab_index);
+        }
+        let tab = ShellTab {
+            title_override: None,
+            layout: SplitLayout::leaf(pane.clone()),
+            split_states: HashMap::new(),
+        };
+        self.tabs.push(tab);
+        self.last_active = Some(self.active.min(self.tabs.len().saturating_sub(1)));
+        self.active = self.tabs.len() - 1;
+        self.watch_pane(pane, cx);
+        self.sync_pane_focus(cx);
+        self.request_terminal_focus(window, cx);
+        cx.notify();
+    }
+
+    fn pane_select_move_window(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(i) = Self::pane_index(id) else {
+            return;
+        };
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if tab.layout.pane_count() < 2 && self.tabs.len() < 2 {
+            self.spawn_window(cx);
+            return;
+        }
+        let Some(pane) = tab.layout.panes().get(i).cloned() else {
+            return;
+        };
+        let tab_index = self.active;
+        let extracted = self.tabs[tab_index].layout.extract_pane(&pane);
+        self.tabs[tab_index].retain_split_states();
+        let Some((pane, empty)) = extracted else {
+            self.spawn_window(cx);
+            return;
+        };
+        if empty {
+            let _ = self.remove_tab_at(tab_index);
+        }
+        let opts = app_window_options(cx);
+        let _ = cx.open_window(opts, move |window, cx| {
+            let view = cx.new(|cx| AppShell::build(window, cx, Some(pane.clone())));
+            let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
+            view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
+            root
+        });
+        self.sync_pane_focus(cx);
+        self.request_terminal_focus(window, cx);
+        cx.notify();
+    }
+
+    fn spawn_window(&mut self, cx: &mut Context<Self>) {
+        let opts = app_window_options(cx);
+        let _ = cx.open_window(opts, |window, cx| {
+            let view = cx.new(|cx| AppShell::new(window, cx));
+            let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
+            view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
+            root
+        });
+    }
+
+    fn activate_window_at(&mut self, n: usize, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(h) = cx.windows().get(n).copied() {
+            let _ = h.update(cx, |_, w, _| {
+                w.activate_window();
+            });
+        }
+    }
+
+    fn activate_window_relative(
+        &mut self,
+        delta: isize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let windows = cx.windows();
+        let mine = window.window_handle();
+        let Some(idx) = windows.iter().position(|h| *h == mine) else {
+            return;
+        };
+        let n = windows.len() as isize;
+        if n == 0 {
+            return;
+        }
+        let next = (idx as isize + delta).rem_euclid(n) as usize;
+        self.activate_window_at(next, window, cx);
+    }
+
+    fn enter_copy_mode(&mut self, cx: &mut Context<Self>) {
+        self.with_active_term(cx, |term, cx| {
+            term.enter_copy_mode();
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    fn reload_configuration(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        config::reload();
+        let font_px = crate::mux_host::config_font_size();
+        self.font_px = font_px;
+        for tab in &self.tabs {
+            for term in tab.layout.panes() {
+                term.update(cx, |term, cx| {
+                    term.reload_from_config(font_px);
+                    cx.notify();
+                });
+            }
+        }
+        window.push_notification(Notification::info("Reloaded configuration"), cx);
         cx.notify();
     }
 
@@ -712,6 +1351,7 @@ impl AppShell {
             return;
         };
         let empty = tab.layout.remove_pane(&pane);
+        tab.retain_split_states();
         if empty && self.remove_tab_at(tab_index) {
             cx.quit();
             return;
@@ -800,6 +1440,7 @@ impl AppShell {
     }
 
     fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.picker_kind = None;
         self.palette_open = true;
         self.palette.update(cx, |p, cx| p.focus_search(window, cx));
         cx.notify();
@@ -817,25 +1458,33 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.palette_open {
-            self.close_palette(window, cx);
+        if self.overlay_open() {
+            self.close_overlay(window, cx);
         } else {
             self.open_palette(window, cx);
         }
     }
 
     fn on_close_palette(&mut self, _: &ClosePalette, window: &mut Window, cx: &mut Context<Self>) {
-        if self.palette_open {
-            self.close_palette(window, cx);
+        if self.overlay_open() {
+            self.close_overlay(window, cx);
         }
     }
 
     fn on_palette_up(&mut self, _: &PaletteMoveUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.palette.update(cx, |p, cx| p.move_sel(-1, cx));
+        if self.picker_kind.is_some() {
+            self.picker.update(cx, |p, cx| p.move_sel(-1, cx));
+        } else if self.palette_open {
+            self.palette.update(cx, |p, cx| p.move_sel(-1, cx));
+        }
     }
 
     fn on_palette_down(&mut self, _: &PaletteMoveDown, _: &mut Window, cx: &mut Context<Self>) {
-        self.palette.update(cx, |p, cx| p.move_sel(1, cx));
+        if self.picker_kind.is_some() {
+            self.picker.update(cx, |p, cx| p.move_sel(1, cx));
+        } else if self.palette_open {
+            self.palette.update(cx, |p, cx| p.move_sel(1, cx));
+        }
     }
 
     fn on_palette_confirm(
@@ -844,7 +1493,11 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.palette.update(cx, |p, cx| p.confirm(window, cx));
+        if self.picker_kind.is_some() {
+            self.picker.update(cx, |p, cx| p.confirm(cx));
+        } else if self.palette_open {
+            self.palette.update(cx, |p, cx| p.confirm(window, cx));
+        }
     }
 
     fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
@@ -905,21 +1558,21 @@ impl AppShell {
     }
 
     fn on_copy(&mut self, _: &CopySelection, window: &mut Window, cx: &mut Context<Self>) {
-        if self.palette_open || window.has_active_dialog(cx) {
+        if self.overlay_open() || window.has_active_dialog(cx) {
             return;
         }
         self.copy_selection(window, cx, false);
     }
 
     fn on_paste(&mut self, _: &PasteClipboard, window: &mut Window, cx: &mut Context<Self>) {
-        if self.palette_open || window.has_active_dialog(cx) {
+        if self.overlay_open() || window.has_active_dialog(cx) {
             return;
         }
         self.paste_clipboard(window, cx, false);
     }
 
     fn on_term_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.palette_open || window.has_active_dialog(cx) {
+        if self.overlay_open() || window.has_active_dialog(cx) {
             return;
         }
         if let Some(term) = self
@@ -940,7 +1593,7 @@ impl AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.focus_pending && !self.palette_open && !window.has_active_dialog(cx) {
+        if self.focus_pending && !self.overlay_open() && !window.has_active_dialog(cx) {
             self.focus_terminal(window, cx);
             self.focus_pending = false;
         }
@@ -950,9 +1603,10 @@ impl Render for AppShell {
                 render_split_tree(
                     &LayoutNode::leaf(t.layout.active_index()),
                     t.layout.panes(),
+                    &t.split_states,
                 )
             } else {
-                render_split_tree(t.layout.root(), t.layout.panes())
+                render_split_tree(t.layout.root(), t.layout.panes(), &t.split_states)
             }
         });
         let cfg = config::configuration();
@@ -978,7 +1632,9 @@ impl Render for AppShell {
             cfg.enable_tab_bar,
             cfg.hide_tab_bar_if_only_one_tab,
         );
+        let overlay_open = self.overlay_open();
         let palette_open = self.palette_open;
+        let picker_open = self.picker_kind.is_some();
         let status_title = self
             .tabs
             .get(active)
@@ -999,7 +1655,7 @@ impl Render for AppShell {
         div()
             .id("app-shell")
             .track_focus(&self.focus_handle)
-            .key_context(if palette_open {
+            .key_context(if overlay_open {
                 PALETTE_CONTEXT
             } else {
                 APP_CONTEXT
@@ -1134,29 +1790,22 @@ impl Render for AppShell {
                     ),
             )
             .when(palette_open, |this| {
-                this.child(
-                    div()
-                        .id("palette-scrim")
-                        .absolute()
-                        .inset_0()
-                        .flex()
-                        .justify_center()
-                        .pt(px(72.))
-                        .bg(gpui::black().opacity(0.45))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|this, _, window, cx| {
-                                this.close_palette(window, cx);
-                            }),
-                        )
-                        .child(
-                            div()
-                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                                    cx.stop_propagation();
-                                })
-                                .child(self.palette.clone()),
-                        ),
-                )
+                this.child(overlay_scrim(
+                    "palette-scrim",
+                    cx.listener(|this, _, window, cx| {
+                        this.close_palette(window, cx);
+                    }),
+                    self.palette.clone(),
+                ))
+            })
+            .when(picker_open, |this| {
+                this.child(overlay_scrim(
+                    "picker-scrim",
+                    cx.listener(|this, _, window, cx| {
+                        this.close_picker(window, cx);
+                    }),
+                    self.picker.clone(),
+                ))
             })
             .children(sheet_layer)
             .children(dialog_layer)
@@ -1178,7 +1827,74 @@ fn launch_content_size(window: &Window) -> Size<Pixels> {
     }
 }
 
-fn render_split_tree(node: &LayoutNode, panes: &[Entity<TermPane>]) -> AnyElement {
+fn overlay_scrim(
+    id: &'static str,
+    on_scrim: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    child: impl IntoElement,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .absolute()
+        .inset_0()
+        .flex()
+        .justify_center()
+        .pt(px(72.))
+        .bg(gpui::black().opacity(0.45))
+        .on_mouse_down(MouseButton::Left, on_scrim)
+        .child(
+            div()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                    cx.stop_propagation();
+                })
+                .child(child),
+        )
+}
+
+fn app_window_options(cx: &App) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+            None,
+            size(px(980.), px(640.)),
+            cx,
+        ))),
+        titlebar: Some(TitlebarOptions {
+            title: Some("WezTerm GPUI".into()),
+            ..TitleBar::title_bar_options()
+        }),
+        ..Default::default()
+    }
+}
+
+fn spawn_command_builder(cmd: &config::keyassignment::SpawnCommand) -> CommandBuilder {
+    let mut builder = match &cmd.args {
+        Some(args) if !args.is_empty() => {
+            CommandBuilder::from_argv(args.iter().map(OsString::from).collect())
+        }
+        _ => CommandBuilder::new_default_prog(),
+    };
+    if let Some(cwd) = &cmd.cwd {
+        builder.cwd(cwd);
+    }
+    for (k, v) in &cmd.set_environment_variables {
+        builder.env(k, v);
+    }
+    builder
+}
+
+fn builder_argv(builder: &CommandBuilder) -> Option<Vec<OsString>> {
+    let argv = builder.get_argv();
+    if argv.is_empty() {
+        None
+    } else {
+        Some(argv.clone())
+    }
+}
+
+fn render_split_tree(
+    node: &LayoutNode,
+    panes: &[Entity<TermPane>],
+    states: &HashMap<u64, Entity<ResizableState>>,
+) -> AnyElement {
     match node {
         LayoutNode::Leaf(i) => {
             let Some(pane) = panes.get(*i) else {
@@ -1201,9 +1917,14 @@ fn render_split_tree(node: &LayoutNode, panes: &[Entity<TermPane>]) -> AnyElemen
                 SplitAxis::Horizontal => h_resizable(("pane-split", *id)),
                 SplitAxis::Vertical => v_resizable(("pane-split", *id)),
             };
+            let group = if let Some(state) = states.get(id) {
+                group.with_state(state)
+            } else {
+                group
+            };
             group
-                .child(render_split_tree(first, panes))
-                .child(render_split_tree(second, panes))
+                .child(render_split_tree(first, panes, states))
+                .child(render_split_tree(second, panes, states))
                 .into_any_element()
         }
     }

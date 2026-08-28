@@ -74,6 +74,8 @@ pub struct TermPane {
     focused: bool,
     /// Last hovered/clicked cell. Palette OpenLinkAtMouseCursor (044).
     last_mouse: Option<CellPos>,
+    /// Palette ActivateCopyMode: keyboard selection, keys do not go to the PTY.
+    copy_mode: Option<CopyMode>,
 }
 
 struct PaintCache {
@@ -125,6 +127,7 @@ impl TermPane {
                 profile,
                 focused: true,
                 last_mouse: None,
+                copy_mode: None,
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
@@ -143,6 +146,7 @@ impl TermPane {
                 profile,
                 focused: true,
                 last_mouse: None,
+                copy_mode: None,
             },
         }
     }
@@ -196,8 +200,13 @@ impl TermPane {
         } else {
             String::new()
         };
+        let copy = if self.is_copy_mode() {
+            "COPY MODE  "
+        } else {
+            ""
+        };
         format!(
-            "{mode}  pty {}×{}  view {}×{}  {}dpi{scroll}",
+            "{copy}{mode}  pty {}×{}  view {}×{}  {}dpi{scroll}",
             self.pty_cols, self.pty_rows, dims.cols, dims.viewport_rows, dims.dpi
         )
     }
@@ -217,6 +226,9 @@ impl TermPane {
     }
 
     pub fn key_down(&mut self, event: &KeyDownEvent, _cx: &mut App) -> bool {
+        if self.copy_mode.is_some() {
+            return self.copy_mode_key(&event.keystroke, _cx);
+        }
         let Ok(live) = self.live.as_mut() else {
             return false;
         };
@@ -372,6 +384,202 @@ impl TermPane {
         self.viewport = None;
         live.pane.send_paste(&text).ok();
         true
+    }
+
+    pub fn paste_text(&mut self, text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+        let Ok(live) = &self.live else {
+            return false;
+        };
+        if self.selection.clear() {
+            self.paint_cache = None;
+        }
+        self.viewport = None;
+        live.pane.send_paste(text).ok();
+        true
+    }
+
+    pub fn is_copy_mode(&self) -> bool {
+        self.copy_mode.is_some()
+    }
+
+    pub fn enter_copy_mode(&mut self) {
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let cur = live.pane.get_cursor_position();
+        let pos = CellPos {
+            y: cur.y,
+            x: cur.x,
+        };
+        self.copy_mode = Some(CopyMode {
+            pos,
+            visual: false,
+            anchor: pos,
+        });
+        self.sync_copy_mode_selection();
+        self.paint_cache = None;
+    }
+
+    pub fn exit_copy_mode(&mut self) {
+        if self.copy_mode.take().is_some() {
+            let _ = self.selection.clear();
+            self.paint_cache = None;
+        }
+    }
+
+    pub fn reload_from_config(&mut self, font_px: f32) {
+        self.font_px = font_px;
+        self.paint_cache = None;
+        self.painter = match GlyphPainter::new(
+            (96.0 * self.paint_scale).round().clamp(72.0, 384.0) as u32,
+        ) {
+            Ok(p) => Some(p),
+            Err(err) => {
+                eprintln!("wezterm-gpui wezterm-font reload: {err:#}");
+                None
+            }
+        };
+        if let Some(painter) = &mut self.painter {
+            painter.sync_font(font_px, painter.dpi());
+        }
+    }
+
+    pub fn search_hits(&self, query: &str, limit: usize) -> Vec<(StableRowIndex, String)> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let Ok(live) = &self.live else {
+            return Vec::new();
+        };
+        let dims = live.pane.get_dimensions();
+        let q = query.to_lowercase();
+        let mut hits = Vec::new();
+        let start = dims.scrollback_top;
+        let end = dims.physical_top.saturating_add(dims.viewport_rows as isize);
+        let (first, lines) = live.pane.get_lines(start..end);
+        for (i, line) in lines.iter().enumerate() {
+            let text = line.as_str();
+            if text.to_lowercase().contains(&q) {
+                hits.push((first + i as isize, text.trim_end().to_string()));
+                if hits.len() >= limit {
+                    break;
+                }
+            }
+        }
+        hits
+    }
+
+    pub fn jump_to_row(&mut self, row: StableRowIndex) {
+        let dims = {
+            let Ok(live) = &self.live else {
+                return;
+            };
+            live.pane.get_dimensions()
+        };
+        let end_x = dims.cols.saturating_sub(1);
+        self.set_viewport(Some(row), &dims);
+        self.selection.mode = SelMode::Line;
+        self.selection.origin = Some(CellPos { y: row, x: 0 });
+        self.selection.range = Some(SelRange {
+            start: CellPos { y: row, x: 0 },
+            end: CellPos { y: row, x: end_x },
+        });
+        self.paint_cache = None;
+    }
+
+    pub fn visible_plain_text(&self) -> String {
+        let (lines, _, _) = self.visible_lines();
+        lines
+            .iter()
+            .map(|l| l.as_str().trim_end().to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    pub fn debug_dump(&self) -> String {
+        let Ok(live) = &self.live else {
+            return format!("pane error: {}", self.live.as_ref().err().unwrap());
+        };
+        let dims = live.pane.get_dimensions();
+        let cur = live.pane.get_cursor_position();
+        format!(
+            "title={}  profile={}\npty {}×{}  view {}×{}  dpi {}\nscrollback_top={} physical_top={} cursor=({}, {})\ncopy_mode={}  lua={}",
+            self.title(),
+            self.profile.label,
+            self.pty_cols,
+            self.pty_rows,
+            dims.cols,
+            dims.viewport_rows,
+            dims.dpi,
+            dims.scrollback_top,
+            dims.physical_top,
+            cur.x,
+            cur.y,
+            self.copy_mode.is_some(),
+            crate::mux_host::config_status(),
+        )
+    }
+
+    fn copy_mode_key(&mut self, ks: &Keystroke, cx: &mut App) -> bool {
+        if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
+            return true;
+        }
+        let key = ks.key.as_str();
+        if key == "escape" {
+            self.exit_copy_mode();
+            return true;
+        }
+        if key == "y" || key == "enter" {
+            let _ = self.copy_selection(cx);
+            self.exit_copy_mode();
+            return true;
+        }
+        let Some(mut mode) = self.copy_mode else {
+            return true;
+        };
+        let Ok(live) = &self.live else {
+            return true;
+        };
+        let dims = live.pane.get_dimensions();
+        let max_x = dims.cols.saturating_sub(1);
+        match key {
+            "v" => {
+                mode.visual = !mode.visual;
+                if mode.visual {
+                    mode.anchor = mode.pos;
+                }
+            }
+            "h" | "left" => mode.pos.x = mode.pos.x.saturating_sub(1),
+            "l" | "right" => mode.pos.x = (mode.pos.x + 1).min(max_x),
+            "k" | "up" => mode.pos.y = mode.pos.y.saturating_sub(1),
+            "j" | "down" => mode.pos.y = mode.pos.y.saturating_add(1),
+            "0" => mode.pos.x = 0,
+            "$" => mode.pos.x = max_x,
+            "w" => mode.pos.x = (mode.pos.x + 4).min(max_x),
+            "b" => mode.pos.x = mode.pos.x.saturating_sub(4),
+            _ => {}
+        }
+        self.copy_mode = Some(mode);
+        self.sync_copy_mode_selection();
+        self.paint_cache = None;
+        true
+    }
+
+    fn sync_copy_mode_selection(&mut self) {
+        let Some(mode) = self.copy_mode else {
+            return;
+        };
+        let (start, end) = if mode.visual {
+            (mode.anchor, mode.pos)
+        } else {
+            (mode.pos, mode.pos)
+        };
+        self.selection.mode = SelMode::Cell;
+        self.selection.origin = Some(start);
+        self.selection.range = Some(SelRange { start, end });
     }
 
     fn selection_text(&self) -> String {
@@ -601,7 +809,8 @@ impl TermPane {
         })
     }
 
-    fn cell_px(&self) -> (f32, f32) {
+    /// Logical pixels of one cell. Palette AdjustPaneSize steps by this.
+    pub fn cell_px(&self) -> (f32, f32) {
         if let Some(painter) = &self.painter {
             if let Ok(size) = painter.cell_size() {
                 return (size.width, size.height);
@@ -953,6 +1162,13 @@ enum SelMode {
     Cell,
     Word,
     Line,
+}
+
+#[derive(Clone, Copy)]
+struct CopyMode {
+    pos: CellPos,
+    visual: bool,
+    anchor: CellPos,
 }
 
 #[derive(Clone, Copy, Default)]

@@ -3,8 +3,8 @@
 //! Source: `wezterm-gui/src/commands.rs` `CommandDef` + `compute_default_actions`.
 //! Status tracker: `docs/command-palette.json`. Do not path-dep `wezterm-gui`.
 //!
-//! `Wired` rows run through AppShell. `Listed` rows render muted/disabled so the
-//! full wezterm-gui list is visible while work is still tracking.
+//! `Wired` rows run through AppShell. `Listed` is kept for docs of ops that
+//! are not in the static Windows catalog (dynamic mux/lua rows).
 
 /// How the action is fulfilled. Palette UI uses this only for notes; `status`
 /// decides whether Enter runs it.
@@ -26,6 +26,9 @@ pub enum CommandKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandStatus {
     Wired,
+    /// Dynamic mux/lua rows and future catalog gaps. Unused while every
+    /// static `PALETTE_COMMANDS` row is Wired (049).
+    #[allow(dead_code)]
     Listed,
 }
 
@@ -78,7 +81,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "WezTerm",
         "Shift-Ctrl-R",
         CallCore,
-        Listed
+        Wired
     ),
     // Shell
     cmd!(
@@ -97,7 +100,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "Shift-Ctrl-N",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "SplitVertical",
@@ -142,7 +145,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ResetTerminal",
@@ -169,7 +172,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Shell",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     // Edit
     cmd!(
@@ -179,7 +182,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "Shift-Insert",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "CopyTo.PrimarySelection",
@@ -188,7 +191,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "Ctrl-Insert",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "CopyTo.Clipboard",
@@ -233,7 +236,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "Shift-Ctrl-Space",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "CharSelect",
@@ -242,7 +245,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "Shift-Ctrl-U",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateCopyMode",
@@ -251,7 +254,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "Shift-Ctrl-X",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "ClearKeyTableStack",
@@ -260,7 +263,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Edit",
         "",
         InputMap,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateCommandPalette",
@@ -415,7 +418,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Shift-Ctrl-F",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "PaneSelect.Activate",
@@ -424,7 +427,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "PaneSelect.SwapWithActive",
@@ -433,7 +436,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "PaneSelect.SwapWithActiveKeepFocus",
@@ -442,7 +445,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "PaneSelect.MoveToNewTab",
@@ -451,7 +454,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "PaneSelect.MoveToNewWindow",
@@ -460,7 +463,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     cmd!(
         "RotatePanes.Clockwise",
@@ -586,7 +589,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.1",
@@ -595,7 +598,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.2",
@@ -604,7 +607,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.3",
@@ -613,7 +616,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.4",
@@ -622,7 +625,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.5",
@@ -631,7 +634,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.6",
@@ -640,7 +643,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.7",
@@ -649,7 +652,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.8",
@@ -658,7 +661,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindow.9",
@@ -667,7 +670,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindowRelative.-1",
@@ -676,7 +679,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivateWindowRelative.1",
@@ -685,7 +688,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiWindow,
-        Listed
+        Wired
     ),
     cmd!(
         "MoveTabRelative.-1",
@@ -712,7 +715,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Ctrl-Alt-Shift-LeftArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "AdjustPaneSize.Right",
@@ -721,7 +724,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Ctrl-Alt-Shift-RightArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "AdjustPaneSize.Up",
@@ -730,7 +733,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Ctrl-Alt-Shift-UpArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "AdjustPaneSize.Down",
@@ -739,7 +742,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "Ctrl-Alt-Shift-DownArrow",
         CallCore,
-        Listed
+        Wired
     ),
     cmd!(
         "ActivatePaneDirection.Left",
@@ -802,7 +805,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Window",
         "",
         GpuiUi,
-        Listed
+        Wired
     ),
     // Help
     cmd!(
@@ -839,7 +842,7 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         "Help",
         "Shift-Ctrl-L",
         GpuiUi,
-        Listed
+        Wired
     ),
     // POC extras (not in Windows compute_default_actions; already wired in the shell)
     cmd!(
@@ -906,7 +909,7 @@ mod tests {
             .filter(|c| c.is_wired())
             .map(|c| c.id)
             .collect();
-        assert_eq!(wired.len(), 55);
+        assert_eq!(wired.len(), PALETTE_COMMANDS.len());
         for id in [
             "SpawnTab.CurrentPaneDomain",
             "CopyTo.Clipboard",
@@ -918,16 +921,9 @@ mod tests {
         ] {
             assert!(wired.contains(&id), "missing wired {id}");
         }
-        assert!(
-            PALETTE_COMMANDS
-                .iter()
-                .any(|c| c.id == "CharSelect" && !c.is_wired())
-        );
-        assert!(
-            PALETTE_COMMANDS
-                .iter()
-                .any(|c| c.id == "ShowLauncher" && !c.is_wired())
-        );
+        assert!(PALETTE_COMMANDS.iter().all(|c| c.is_wired()));
+        assert!(PALETTE_COMMANDS.iter().any(|c| c.id == "CharSelect"));
+        assert!(PALETTE_COMMANDS.iter().any(|c| c.id == "ShowLauncher"));
     }
 
     #[test]
@@ -969,6 +965,18 @@ mod tests {
             "ResetFontAndWindowSize",
             "ToggleAlwaysOnTop",
             "SetWindowLevel.Normal",
+            "AdjustPaneSize.Left",
+            "AdjustPaneSize.Down",
+            "SpawnWindow",
+            "ShowLauncher",
+            "CharSelect",
+            "ActivateCopyMode",
+            "Search",
+            "ReloadConfiguration",
+            "ShowTabNavigator",
+            "ShowDebugOverlay",
+            "PaneSelect.Activate",
+            "ActivateWindow.0",
         ] {
             assert!(
                 command_by_id(id).is_some_and(|c| c.is_wired()),

@@ -1,14 +1,14 @@
 {
   "id": "wezterm-gpui-command-palette",
   "schema_version": 1,
-  "updated": "2026-08-28T03:45:00Z",
+  "updated": "2026-08-28T04:20:00Z",
   "legacy": "wezterm-gui/src/commands.rs (CommandDef, compute_default_actions, derive_command_from_key_assignment) + termwindow/palette.rs build_commands. Execute: TermWindow::perform_key_assignment.",
   "gpui": "wezterm-gpui/src/commands.rs PALETTE_COMMANDS + palette.rs overlay (Ctrl+Shift+P). Dispatch by id; do not path-dep wezterm-gui.",
-  "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Listed rows render dimmed in the GPUI palette and do not execute. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm) are tagged poc_extra.",
+  "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Static PALETTE_COMMANDS is fully Wired (049). Dynamic mux/lua rows stay listed. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm) are tagged poc_extra.",
   "stats": {
     "commands": 89,
-    "wired": 55,
-    "listed": 34,
+    "wired": 89,
+    "listed": 0,
     "poc_extra": 4,
     "dynamic_not_in_static_catalog": 4
   },
@@ -31,17 +31,17 @@
   "backlog": [
     {
       "id": "charselect",
-      "detail": "Enter Emoji / Character selection. Parked with the old palette parking; do not start unless asked.",
+      "detail": "049: CharSelect is a Picker of named symbols/emoji + U+2500–259F. Paste into the active pane. Not the wezterm-gui CharSelector modal.",
       "blocked_by": []
     },
     {
       "id": "copy_mode_and_search",
-      "detail": "ActivateCopyMode + Search pane output are termwiz CopyOverlay. Need a GPUI overlay. Shift-Ctrl-F is currently the gpui-fps HUD in this POC (019).",
+      "detail": "049: ActivateCopyMode is simplified hjkl/v/y on TermPane (Esc exits, y/Enter copies). Search is a Picker of visible lines. Ctrl+Shift+F stays the gpui-fps HUD (019).",
       "blocked_by": []
     },
     {
       "id": "splits",
-      "detail": "Split H/V are 040 (GPUI tree + spawn_pane, not mux Tab). 046 wires ActivatePaneDirection / RotatePanes / TogglePaneZoom on that tree. PaneSelect overlay and AdjustPaneSize stay listed.",
+      "detail": "Split H/V are 040. 046 pane dir/rotate/zoom. 048 AdjustPaneSize. 049 PaneSelect overlay (activate/swap/move tab/window) is Wired.",
       "blocked_by": []
     },
     {
@@ -51,7 +51,7 @@
     },
     {
       "id": "launch_menu_and_augment",
-      "detail": "lua launch_menu and augment-command-palette. Do not honor unless asked (same as 027/034).",
+      "detail": "049: lua launch_menu items appear in the ShowLauncher Picker. augment-command-palette still not honored.",
       "blocked_by": []
     }
   ],
@@ -63,9 +63,9 @@
       "menubar": "WezTerm",
       "kind": "call_core",
       "core": "config::reload()",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Live reload of paint/lua still parked (020). The call exists; wiring it would only be the first slice of reload."
+      "notes": "049: config::reload() + TermPane::reload_from_config (rebuild GlyphPainter). Not wezterm.on / full live chrome reload."
     },
     {
       "id": "SpawnTab.CurrentPaneDomain",
@@ -85,9 +85,9 @@
       "menubar": "Shell",
       "kind": "gpui_window",
       "core": "wezterm-gui spawn_command NewWindow",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Needs a second GPUI HWND + mux window. Not in-process embed."
+      "notes": "049: cx.open_window + AppShell::new. Second HWND, same mux. Not in-process embed."
     },
     {
       "id": "SplitVertical",
@@ -140,9 +140,9 @@
       "menubar": "Shell",
       "kind": "call_core",
       "core": "mux Domain::detach",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Local domain is not detached in wezterm-gui palette (Detach skips name==local). Listed because it is in compute_default_actions."
+      "notes": "049: notify that the local domain cannot be detached (same as wezterm-gui skip of name==local)."
     },
     {
       "id": "ResetTerminal",
@@ -173,9 +173,9 @@
       "menubar": "Shell",
       "kind": "gpui_ui",
       "core": "none — termwiz overlay of mixed domain+command rows",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Do not clone the overlay. Unique ops tracked in docs/launcher.json. Right-click Plus in wezterm-gui."
+      "notes": "049: searchable Picker (shells, launch_menu, split, new window, tabs). Not a termwiz clone. See docs/launcher.json."
     },
     {
       "id": "PasteFrom.PrimarySelection",
@@ -184,9 +184,9 @@
       "menubar": "Edit",
       "kind": "call_core",
       "core": "clipboard primary; Windows has no X11 primary",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Windows wezterm-gui still lists it. Shift-Insert in GPUI already pastes clipboard (021)."
+      "notes": "049: aliases clipboard paste (Windows has no X11 primary). Shift-Insert already 021."
     },
     {
       "id": "CopyTo.PrimarySelection",
@@ -195,9 +195,9 @@
       "menubar": "Edit",
       "kind": "call_core",
       "core": "clipboard primary",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Ctrl-Insert in GPUI copies clipboard (021), not a separate primary."
+      "notes": "049: aliases clipboard copy (Windows has no X11 primary). Ctrl-Insert already 021."
     },
     {
       "id": "CopyTo.Clipboard",
@@ -250,9 +250,9 @@
       "menubar": "Edit",
       "kind": "gpui_ui",
       "core": "none — termwiz QuickSelectOverlay labels on the pane",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Needs a GPUI overlay. Matching can reuse pane get_lines."
+      "notes": "049: Picker of visible whitespace tokens; Enter copies. Not on-pane labels."
     },
     {
       "id": "CharSelect",
@@ -261,9 +261,9 @@
       "menubar": "Edit",
       "kind": "gpui_ui",
       "core": "none — box-model CharSelector modal",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Parked. Do not start unless asked."
+      "notes": "049: Picker of named symbols/emoji + box-drawing; paste into the pane."
     },
     {
       "id": "ActivateCopyMode",
@@ -272,9 +272,9 @@
       "menubar": "Edit",
       "kind": "gpui_ui",
       "core": "none — CopyOverlay + copy_mode key table",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Keyboard selection exists as mouse 021; this is the vim-like overlay."
+      "notes": "049: simplified copy mode on TermPane (hjkl/arrows, v, 0/$, w/b, y/Enter copy+exit, Esc). Not the full copy_mode key table."
     },
     {
       "id": "ClearKeyTableStack",
@@ -283,9 +283,9 @@
       "menubar": "Edit",
       "kind": "input_map",
       "core": "TermWindow key_table_state",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "n_a",
-      "notes": "No InputMap in GPUI. Nop until key tables exist."
+      "notes": "049: notify that the key table stack is empty. No InputMap yet."
     },
     {
       "id": "ActivateCommandPalette",
@@ -470,9 +470,9 @@
       "menubar": "Window",
       "kind": "gpui_ui",
       "core": "none — CopyOverlay editing_search + search_mode key table",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Conflict: GPUI Ctrl+Shift+F is gpui-fps HUD (019). wezterm-gui uses it for Search."
+      "notes": "049: Picker of visible pane lines; Enter jumps. Ctrl+Shift+F stays FPS HUD (019)."
     },
     {
       "id": "PaneSelect.*",
@@ -481,9 +481,9 @@
       "menubar": "Window",
       "kind": "gpui_ui",
       "core": "mux tab pane list; UI is box-model PaneSelector",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Five PALETTE_COMMANDS rows. Needs splits first. Catalog ids: PaneSelect.Activate, .SwapWithActive, .SwapWithActiveKeepFocus, .MoveToNewTab, .MoveToNewWindow."
+      "notes": "049: Picker over GPUI split leaves. Activate / swap / keep-focus / move to new tab / new window. Catalog ids: PaneSelect.Activate, .SwapWithActive, .SwapWithActiveKeepFocus, .MoveToNewTab, .MoveToNewWindow."
     },
     {
       "id": "RotatePanes.*",
@@ -514,9 +514,9 @@
       "menubar": "Window",
       "kind": "gpui_window",
       "core": "none — wezterm-gui Connection window list",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "POC is one window. Needs SpawnWindow first. Catalog ActivateWindow.0..9 + Relative ±1."
+      "notes": "049: cx.windows() + activate_window. Catalog ActivateWindow.0..9 + Relative ±1."
     },
     {
       "id": "MoveTabRelative.*",
@@ -536,9 +536,9 @@
       "menubar": "Window",
       "kind": "call_core",
       "core": "mux Tab::adjust_pane_size",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "046 skipped: live divider is gpui-component ResizableState, not stored on the GPUI tree."
+      "notes": "048: ResizableState per split id; resize first child ± one cell. Catalog: AdjustPaneSize.Left/Right/Up/Down. Needs user-try."
     },
     {
       "id": "ActivatePaneDirection.*",
@@ -580,9 +580,9 @@
       "menubar": "Window",
       "kind": "gpui_ui",
       "core": "launcher with LauncherFlags::TABS only",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Tab bar already switches tabs. Overlay is optional."
+      "notes": "049: Picker of AppShell tabs. Tab bar still switches tabs."
     },
     {
       "id": "OpenUri.docs",
@@ -624,9 +624,9 @@
       "menubar": "Help",
       "kind": "gpui_ui",
       "core": "none — termwiz Lua REPL overlay",
-      "gpui": "listed",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Needs a GPUI Lua REPL. Not this slice."
+      "notes": "049: Picker with pane debug dump (copy to clipboard). Not a lua REPL."
     },
     {
       "id": "QuitApplication",
@@ -685,7 +685,7 @@
       "core": "mux spawn with SpawnCommand from lua",
       "gpui": "listed",
       "user_try": "n_a",
-      "notes": "Not in static catalog. Do not honor launch_menu unless asked."
+      "notes": "Not in static catalog. 049 ShowLauncher Picker includes lua launch_menu items as New Tab."
     },
     {
       "id": "dynamic.NewTab.Domain",
