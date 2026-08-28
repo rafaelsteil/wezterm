@@ -1,0 +1,7 @@
+{
+  "id": "054-tab-sends-pty-completion",
+  "at": "2026-08-28T19:35:00Z",
+  "decision": "appshell_tab_binding_beats_root_focus_next",
+  "rationale": "User: Tab changes focus or does nothing; should be shell completion. gpui-component Root binds tab to window.focus_next before AppShell on_key_down. Bind tab/shift-tab in AppShell context and send KeyCode::Tab to the PTY. Propagate when a dialog is open so OK/Cancel keep Tab. Do not start 026/031.",
+  "record": "docs/plans/054-tab-sends-pty-completion.md"
+}

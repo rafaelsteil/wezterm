@@ -43,6 +43,8 @@ actions!(
         OpenSearch,
         CopySelection,
         PasteClipboard,
+        SendPtyTab,
+        SendPtyShiftTab,
     ]
 );
 
@@ -61,6 +63,9 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-shift-v", PasteClipboard, Some(APP_CONTEXT)),
         KeyBinding::new("ctrl-insert", CopySelection, Some(APP_CONTEXT)),
         KeyBinding::new("shift-insert", PasteClipboard, Some(APP_CONTEXT)),
+        // Deeper than gpui-component Root's `tab` → focus_next (054).
+        KeyBinding::new("tab", SendPtyTab, Some(APP_CONTEXT)),
+        KeyBinding::new("shift-tab", SendPtyShiftTab, Some(APP_CONTEXT)),
         KeyBinding::new("escape", ClosePalette, Some(PALETTE_CONTEXT)),
         KeyBinding::new("up", PaletteMoveUp, Some(PALETTE_CONTEXT)),
         KeyBinding::new("down", PaletteMoveDown, Some(PALETTE_CONTEXT)),
@@ -1971,6 +1976,44 @@ impl AppShell {
         self.paste_clipboard(window, cx, false);
     }
 
+    fn on_send_pty_tab(&mut self, _: &SendPtyTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.send_pty_tab(false, window, cx);
+    }
+
+    fn on_send_pty_shift_tab(
+        &mut self,
+        _: &SendPtyShiftTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.send_pty_tab(true, window, cx);
+    }
+
+    fn send_pty_tab(&mut self, shift: bool, window: &mut Window, cx: &mut Context<Self>) {
+        // Dialogs stay in APP_CONTEXT (unlike palette). Let Root Tab cycle
+        // OK/Cancel. Search / pane-select swallow Tab instead of focus_next.
+        if window.has_active_dialog(cx) {
+            cx.propagate();
+            return;
+        }
+        if self.overlay_open() || self.search_open || self.pane_select.is_some() {
+            return;
+        }
+        if let Some(term) = self
+            .tabs
+            .get(self.active)
+            .and_then(|tab| tab.layout.active_pane())
+            .cloned()
+        {
+            term.update(cx, |term, cx| {
+                if term.send_tab(shift, cx) {
+                    cx.notify();
+                }
+            });
+            self.request_terminal_focus(window, cx);
+        }
+    }
+
     fn on_term_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if window.has_active_dialog(cx) {
             return;
@@ -2121,6 +2164,8 @@ impl Render for AppShell {
             .on_action(cx.listener(Self::on_open_search))
             .on_action(cx.listener(Self::on_copy))
             .on_action(cx.listener(Self::on_paste))
+            .on_action(cx.listener(Self::on_send_pty_tab))
+            .on_action(cx.listener(Self::on_send_pty_shift_tab))
             .on_key_down(cx.listener(Self::on_term_key))
             .relative()
             .size_full()

@@ -286,6 +286,24 @@ impl TermPane {
         true
     }
 
+    /// Tab / Shift+Tab as the PTY would see them (shell completion).
+    /// AppShell intercepts these before gpui-component Root `focus_next`.
+    pub fn send_tab(&mut self, shift: bool, cx: &mut App) -> bool {
+        let event = KeyDownEvent {
+            keystroke: Keystroke {
+                modifiers: Modifiers {
+                    shift,
+                    ..Default::default()
+                },
+                key: "tab".into(),
+                key_char: None,
+            },
+            is_held: false,
+            prefer_character_input: false,
+        };
+        self.key_down(&event, cx)
+    }
+
     pub fn clear_scrollback(&mut self) {
         self.viewport = None;
         self.paint_cache = None;
