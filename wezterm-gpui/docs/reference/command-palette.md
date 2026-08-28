@@ -24,16 +24,18 @@ GPUI lists the Windows default catalog in `wezterm-gpui/src/commands.rs`. **Wire
 
 **049:** remaining catalog (SpawnWindow, ActivateWindow, ReloadConfiguration, launcher/tab/pane/char/search/quickselect/debug pickers, copy mode, primary=clipboard). **Needs user-try.** No dimmed rows.
 
+**050:** Search / Quick Select / Pane Select match wezterm-gui (bottom search bar, in-pane labels, pane letter badges). Ctrl+Shift+F is Search. FPS HUD is palette **Toggle FPS HUD** only. 049 Picker path stays behind a flag. **Needs user-try.**
+
 ## Stats (2026-08-28)
 
 From `command-palette.json` `stats`:
 
 | Bucket | Count |
 |---|---|
-| Catalog rows (Rust) | 89 |
-| Wired (Enter runs) | 89 |
+| Catalog rows (Rust) | 90 |
+| Wired (Enter runs) | 90 |
 | Listed (dimmed) | 0 |
-| POC extras (not in Windows defaults) | 4 (Quit, Rename, Prompt, Confirm) |
+| POC extras (not in Windows defaults) | 5 (Quit, Rename, Prompt, Confirm, ToggleFpsHud) |
 | Dynamic (mux/lua, not in static catalog) | 4 |
 
 ## Kind (do we call core or build GPUI?)

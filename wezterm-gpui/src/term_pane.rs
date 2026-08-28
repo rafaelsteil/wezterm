@@ -8,8 +8,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::StyledExt;
+use gpui_component::label::Label;
 use config::keyassignment::{KeyAssignment, MouseEventTrigger};
 use config::MouseEventAltScreen;
 use mux::pane::{Pane, PaneId, WithPaneLines};
@@ -22,6 +24,9 @@ use wezterm_term::input::{
 };
 use wezterm_term::{Alert, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
 
+use crate::find::{
+    alphabet, find_in_lines, quick_select_matches, HintMatch, SearchHit,
+};
 use crate::glyph_paint::{GlyphPainter, TermPaint};
 use crate::shells::ShellProfile;
 
@@ -76,6 +81,30 @@ pub struct TermPane {
     last_mouse: Option<CellPos>,
     /// Palette ActivateCopyMode: keyboard selection, keys do not go to the PTY.
     copy_mode: Option<CopyMode>,
+    /// Vim-style Search (050). Highlights live here; the bar is AppShell.
+    search: Option<PaneSearch>,
+    quick_select: Option<QuickSelectState>,
+    scroll_dragging: bool,
+}
+
+struct PaneSearch {
+    query: String,
+    case_sensitive: bool,
+    hits: Vec<SearchHit>,
+    current: usize,
+}
+
+struct QuickSelectState {
+    matches: Vec<HintMatch>,
+    typed: String,
+}
+
+#[derive(Clone, Copy)]
+pub struct SearchHighlight {
+    pub vis_row: usize,
+    pub col: usize,
+    pub len: usize,
+    pub current: bool,
 }
 
 struct PaintCache {
@@ -128,6 +157,9 @@ impl TermPane {
                 focused: true,
                 last_mouse: None,
                 copy_mode: None,
+                search: None,
+                quick_select: None,
+                scroll_dragging: false,
             },
             Err(err) => Self {
                 live: Err(format!("{err:#}")),
@@ -147,6 +179,9 @@ impl TermPane {
                 focused: true,
                 last_mouse: None,
                 copy_mode: None,
+                search: None,
+                quick_select: None,
+                scroll_dragging: false,
             },
         }
     }
@@ -226,6 +261,9 @@ impl TermPane {
     }
 
     pub fn key_down(&mut self, event: &KeyDownEvent, _cx: &mut App) -> bool {
+        if self.quick_select.is_some() {
+            return self.quick_select_key(&event.keystroke, _cx);
+        }
         if self.copy_mode.is_some() {
             return self.copy_mode_key(&event.keystroke, _cx);
         }
@@ -360,6 +398,9 @@ impl TermPane {
     }
 
     pub fn copy_selection(&self, cx: &mut App) -> bool {
+        if self.copy_current_search_hit(cx) {
+            return true;
+        }
         let text = self.selection_text();
         if text.is_empty() {
             return false;
@@ -470,6 +511,269 @@ impl TermPane {
             }
         }
         hits
+    }
+
+    pub fn set_search(&mut self, query: &str, case_sensitive: bool, current: usize) {
+        let hits = self.compute_search_hits(query, case_sensitive);
+        let current = if hits.is_empty() {
+            0
+        } else {
+            current.min(hits.len() - 1)
+        };
+        if let Some(hit) = hits.get(current) {
+            self.jump_to_search_row(hit.y);
+        }
+        self.search = Some(PaneSearch {
+            query: query.to_string(),
+            case_sensitive,
+            hits,
+            current,
+        });
+        self.paint_cache = None;
+    }
+
+    pub fn search_step(&mut self, delta: isize) {
+        let Some(search) = self.search.as_mut() else {
+            return;
+        };
+        if search.hits.is_empty() {
+            return;
+        }
+        let n = search.hits.len() as isize;
+        search.current = (search.current as isize + delta).rem_euclid(n) as usize;
+        let y = search.hits[search.current].y;
+        self.jump_to_search_row(y);
+        self.paint_cache = None;
+    }
+
+    pub fn search_status(&self) -> Option<(String, usize, usize, bool)> {
+        let search = self.search.as_ref()?;
+        let shown = if search.hits.is_empty() {
+            0
+        } else {
+            search.current + 1
+        };
+        Some((
+            search.query.clone(),
+            shown,
+            search.hits.len(),
+            search.case_sensitive,
+        ))
+    }
+
+    pub fn clear_search(&mut self) {
+        if self.search.take().is_some() {
+            self.paint_cache = None;
+        }
+    }
+
+    pub fn copy_current_search_hit(&self, cx: &mut App) -> bool {
+        let Some(search) = &self.search else {
+            return false;
+        };
+        if search.query.is_empty() {
+            return false;
+        }
+        let text = search
+            .hits
+            .get(search.current)
+            .and_then(|hit| self.search_hit_text(hit))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| search.query.clone());
+        if text.is_empty() {
+            return false;
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        true
+    }
+
+    fn search_hit_text(&self, hit: &SearchHit) -> Option<String> {
+        let live = self.live.as_ref().ok()?;
+        let (_first, lines) = live.pane.get_lines(hit.y..hit.y + 1);
+        let line = lines.first()?;
+        let text = line.as_str();
+        let copied: String = text.chars().skip(hit.x).take(hit.len.max(1)).collect();
+        if copied.is_empty() {
+            None
+        } else {
+            Some(copied)
+        }
+    }
+
+    pub fn search_highlights(&self) -> Vec<SearchHighlight> {
+        let Some(search) = &self.search else {
+            return Vec::new();
+        };
+        if search.query.is_empty() || search.hits.is_empty() {
+            return Vec::new();
+        }
+        let Ok(live) = &self.live else {
+            return Vec::new();
+        };
+        let dims = live.pane.get_dimensions();
+        let top = self.paint_top(&dims);
+        let bot = top.saturating_add(dims.viewport_rows as isize);
+        search
+            .hits
+            .iter()
+            .enumerate()
+            .filter(|(_, hit)| hit.y >= top && hit.y < bot)
+            .map(|(i, hit)| SearchHighlight {
+                vis_row: (hit.y - top) as usize,
+                col: hit.x,
+                len: hit.len.max(1),
+                current: i == search.current,
+            })
+            .collect()
+    }
+
+    pub fn enter_quick_select(&mut self) {
+        let (lines, _, _) = self.visible_lines();
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let dims = live.pane.get_dimensions();
+        let top = self.paint_top(&dims);
+        self.exit_copy_mode();
+        self.quick_select = Some(QuickSelectState {
+            matches: quick_select_matches(top, &lines, &alphabet()),
+            typed: String::new(),
+        });
+        self.paint_cache = None;
+    }
+
+    pub fn exit_quick_select(&mut self) {
+        if self.quick_select.take().is_some() {
+            self.paint_cache = None;
+        }
+    }
+
+    pub fn quick_select_badges(&self) -> Vec<(f32, f32, String)> {
+        let Some(qs) = &self.quick_select else {
+            return Vec::new();
+        };
+        let Ok(live) = &self.live else {
+            return Vec::new();
+        };
+        let dims = live.pane.get_dimensions();
+        let top = self.paint_top(&dims);
+        let bot = top.saturating_add(dims.viewport_rows as isize);
+        let (cw, ch) = self.cell_px();
+        qs.matches
+            .iter()
+            .filter(|m| m.label.starts_with(&qs.typed) && m.y >= top && m.y < bot)
+            .map(|m| {
+                let row = (m.y - top) as f32;
+                (m.x as f32 * cw, row * ch, m.label.clone())
+            })
+            .collect()
+    }
+
+    pub fn scroll_thumb(&self, track_h: f32) -> (f32, f32) {
+        let Ok(live) = &self.live else {
+            return (0.0, track_h.max(24.0));
+        };
+        let dims = live.pane.get_dimensions();
+        let scroll_size = dims.scrollback_rows.max(1) as f32;
+        let thumb_h = ((dims.viewport_rows as f32 / scroll_size) * track_h).clamp(24.0, track_h);
+        let span = (dims.physical_top - dims.scrollback_top).max(1) as f32;
+        let scroll_top = dims
+            .physical_top
+            .saturating_sub(self.viewport.unwrap_or(dims.physical_top)) as f32;
+        let percent = 1.0 - (scroll_top / span);
+        let top = (percent * (track_h - thumb_h)).max(0.0);
+        (top, thumb_h)
+    }
+
+    pub fn jump_scroll_at_track(&mut self, y_in_track: f32, track_h: f32) {
+        let Ok(live) = &self.live else {
+            return;
+        };
+        let dims = live.pane.get_dimensions();
+        let (_, thumb_h) = self.scroll_thumb(track_h);
+        let available = (track_h - thumb_h).max(1.0);
+        let thumb_top = (y_in_track - thumb_h / 2.0).clamp(0.0, available);
+        let percent = thumb_top / available;
+        let span = (dims.physical_top - dims.scrollback_top).max(0);
+        let y = dims.scrollback_top
+            + ((span as f32) * percent) as StableRowIndex;
+        self.set_viewport(Some(y), &dims);
+        self.paint_cache = None;
+    }
+
+    pub fn selection_plain_text(&self) -> String {
+        self.selection_text()
+    }
+
+    fn compute_search_hits(&self, query: &str, case_sensitive: bool) -> Vec<SearchHit> {
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let Ok(live) = &self.live else {
+            return Vec::new();
+        };
+        let dims = live.pane.get_dimensions();
+        let start = dims.scrollback_top;
+        let end = dims.physical_top.saturating_add(dims.viewport_rows as isize);
+        let (first, lines) = live.pane.get_lines(start..end);
+        find_in_lines(first, &lines, query, case_sensitive)
+    }
+
+    fn jump_to_search_row(&mut self, row: StableRowIndex) {
+        let dims = {
+            let Ok(live) = &self.live else {
+                return;
+            };
+            live.pane.get_dimensions()
+        };
+        let top = self.paint_top(&dims);
+        let bot = top.saturating_add(dims.viewport_rows as isize);
+        if row >= top && row < bot {
+            return;
+        }
+        self.set_viewport(Some(row), &dims);
+        self.paint_cache = None;
+    }
+
+    fn quick_select_key(&mut self, ks: &Keystroke, cx: &mut App) -> bool {
+        let key = ks.key.as_str();
+        if key == "escape" {
+            self.exit_quick_select();
+            return true;
+        }
+        if key == "backspace" {
+            if let Some(qs) = &mut self.quick_select {
+                qs.typed.pop();
+            }
+            return true;
+        }
+        if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
+            return true;
+        }
+        let ch = ks
+            .key_char
+            .as_deref()
+            .and_then(|s| s.chars().next())
+            .or_else(|| key.chars().next().filter(|_| key.len() == 1));
+        let Some(ch) = ch.filter(|c| !c.is_control()) else {
+            return true;
+        };
+        let Some(qs) = self.quick_select.as_mut() else {
+            return true;
+        };
+        qs.typed.push(ch.to_ascii_lowercase());
+        let typed = qs.typed.clone();
+        if let Some(hit) = qs.matches.iter().find(|m| m.label == typed).cloned() {
+            if !hit.text.is_empty() {
+                cx.write_to_clipboard(ClipboardItem::new_string(hit.text));
+            }
+            self.exit_quick_select();
+            return true;
+        }
+        if !qs.matches.iter().any(|m| m.label.starts_with(&typed)) {
+            qs.typed.clear();
+        }
+        true
     }
 
     pub fn jump_to_row(&mut self, row: StableRowIndex) {
@@ -1590,17 +1894,55 @@ fn map_keystroke(ks: &Keystroke) -> Option<(KeyCode, KeyModifiers)> {
 impl Render for TermPane {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.painter.is_some() {
+            let badges = self.quick_select_badges();
+            let show_scroll = crate::lua_ui::enable_scroll_bar();
             return div()
                 .id(("term-pane", cx.entity_id()))
                 .size_full()
                 .min_h_0()
+                .flex()
                 .overflow_hidden()
                 .on_scroll_wheel(cx.listener(|this, event, _, cx| {
                     this.on_scroll_wheel(event);
                     cx.stop_propagation();
                     cx.notify();
                 }))
-                .child(TermScreen { term: cx.entity() })
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .min_w_0()
+                        .min_h_0()
+                        .overflow_hidden()
+                        .child(TermScreen { term: cx.entity() })
+                        .children(badges.into_iter().map(|(x, y, label)| {
+                            div()
+                                .absolute()
+                                .left(px(x))
+                                .top(px((y - 2.0).max(0.0)))
+                                .px_1()
+                                .rounded_sm()
+                                .bg(gpui::black().opacity(0.8))
+                                .child(
+                                    Label::new(label)
+                                        .text_size(px(11.))
+                                        .text_color(gpui::white())
+                                        .font_weight(FontWeight::SEMIBOLD),
+                                )
+                        })),
+                )
+                .when(show_scroll, |this| {
+                    this.child(
+                        div()
+                            .id(("scroll-rail-host", cx.entity_id()))
+                            .w(px(14.))
+                            .h_full()
+                            .flex_shrink_0()
+                            .child(ScrollRail {
+                                term: cx.entity(),
+                            }),
+                    )
+                })
                 .into_any_element();
         }
 
@@ -1718,11 +2060,34 @@ impl Element for TermScreen {
     ) {
         window.set_cursor_style(CursorStyle::IBeam, hitbox);
         style.paint(bounds, window, cx, |window, cx| {
-            let paint = self.term.update(cx, |term, _| term.try_glyph_paint());
+            let (paint, highlights, (cw, ch)) = self.term.update(cx, |term, _| {
+                (
+                    term.try_glyph_paint(),
+                    term.search_highlights(),
+                    term.cell_px(),
+                )
+            });
             if let Some(paint) = paint {
                 crate::glyph_paint::paint_term(window, bounds, &paint);
             } else {
                 window.paint_quad(fill(bounds, rgb(0x0c0c0c)));
+            }
+            let origin_x = f32::from(bounds.origin.x);
+            let origin_y = f32::from(bounds.origin.y);
+            for hit in highlights {
+                let color = if hit.current {
+                    hsla(0.14, 0.70, 0.42, 0.55)
+                } else {
+                    hsla(0.90, 0.85, 0.58, 0.50)
+                };
+                let rect = Bounds {
+                    origin: point(
+                        px(origin_x + hit.col as f32 * cw),
+                        px(origin_y + hit.vis_row as f32 * ch),
+                    ),
+                    size: size(px(hit.len as f32 * cw), px(ch)),
+                };
+                window.paint_quad(fill(rect, color));
             }
         });
 
@@ -1800,4 +2165,128 @@ fn with_cursor_block(line: &str, col: usize) -> String {
         }
     }
     chars.into_iter().collect()
+}
+
+struct ScrollRail {
+    term: Entity<TermPane>,
+}
+
+impl IntoElement for ScrollRail {
+    type Element = Self;
+
+    fn into_element(self) -> Self {
+        self
+    }
+}
+
+impl Element for ScrollRail {
+    type RequestLayoutState = Style;
+    type PrepaintState = Hitbox;
+
+    fn id(&self) -> Option<ElementId> {
+        Some("scroll-rail".into())
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let mut style = Style::default();
+        style.size = gpui::Size::full();
+        let layout_id = window.request_layout(style.clone(), [], cx);
+        (layout_id, style)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _request_layout: &mut Style,
+        window: &mut Window,
+        _cx: &mut App,
+    ) -> Self::PrepaintState {
+        window.insert_hitbox(bounds, HitboxBehavior::Normal)
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        style: &mut Style,
+        hitbox: &mut Hitbox,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        window.set_cursor_style(CursorStyle::Arrow, hitbox);
+        let track_h = f32::from(bounds.size.height);
+        let (thumb_top, thumb_h) = self.term.read(cx).scroll_thumb(track_h);
+        style.paint(bounds, window, cx, |window, _cx| {
+            window.paint_quad(fill(bounds, rgb(0x1a1a1a)));
+            let thumb = Bounds {
+                origin: point(bounds.origin.x, bounds.origin.y + px(thumb_top)),
+                size: size(bounds.size.width, px(thumb_h.max(8.0))),
+            };
+            window.paint_quad(fill(thumb, rgb(0x6a6a6a)));
+        });
+
+        let entity = self.term.clone();
+        let hitbox = hitbox.clone();
+        window.on_mouse_event({
+            let entity = entity.clone();
+            let hitbox = hitbox.clone();
+            move |event: &MouseDownEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble || event.button != MouseButton::Left {
+                    return;
+                }
+                if !hitbox.is_hovered(window) {
+                    return;
+                }
+                entity.update(cx, |term, cx| {
+                    term.scroll_dragging = true;
+                    let y = f32::from(event.position.y - bounds.origin.y);
+                    term.jump_scroll_at_track(y, f32::from(bounds.size.height));
+                    cx.notify();
+                });
+                cx.stop_propagation();
+            }
+        });
+        window.on_mouse_event({
+            let entity = entity.clone();
+            move |event: &MouseMoveEvent, phase, _, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+                entity.update(cx, |term, cx| {
+                    if !term.scroll_dragging {
+                        return;
+                    }
+                    let y = f32::from(event.position.y - bounds.origin.y);
+                    term.jump_scroll_at_track(y, f32::from(bounds.size.height));
+                    cx.notify();
+                });
+            }
+        });
+        window.on_mouse_event({
+            move |event: &MouseUpEvent, phase, _, cx| {
+                if phase != DispatchPhase::Bubble || event.button != MouseButton::Left {
+                    return;
+                }
+                entity.update(cx, |term, cx| {
+                    if term.scroll_dragging {
+                        term.scroll_dragging = false;
+                        cx.notify();
+                    }
+                });
+            }
+        });
+    }
 }

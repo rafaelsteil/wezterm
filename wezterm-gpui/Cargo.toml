@@ -25,6 +25,7 @@ gpui-component = { git = "https://github.com/longbridge/gpui-component", rev = "
 # min/max/close, …) are not embedded in gpui-component; without this +
 # `with_assets`, every Icon is an empty box (028).
 gpui-component-assets = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
+regex = "1"
 # Same git/rev as gpui-component. Enables `gpui/profiler` for FrameTimingCollector.
 # Do not pin a different rev — that duplicates gpui.
 gpui-fps = { git = "https://github.com/longbridge/gpui-component", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }

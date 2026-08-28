@@ -1,15 +1,15 @@
 {
   "id": "wezterm-gpui-command-palette",
   "schema_version": 1,
-  "updated": "2026-08-28T04:20:00Z",
+  "updated": "2026-08-28T13:30:00Z",
   "legacy": "wezterm-gui/src/commands.rs (CommandDef, compute_default_actions, derive_command_from_key_assignment) + termwindow/palette.rs build_commands. Execute: TermWindow::perform_key_assignment.",
   "gpui": "wezterm-gpui/src/commands.rs PALETTE_COMMANDS + palette.rs overlay (Ctrl+Shift+P). Dispatch by id; do not path-dep wezterm-gui.",
-  "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Static PALETTE_COMMANDS is fully Wired (049). Dynamic mux/lua rows stay listed. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm) are tagged poc_extra.",
+  "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Static PALETTE_COMMANDS is fully Wired (049). 050 adds ToggleFpsHud POC extra and matches wezterm search/quickselect/paneselect UI. Dynamic mux/lua rows stay listed. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm, ToggleFpsHud) are tagged poc_extra.",
   "stats": {
-    "commands": 89,
-    "wired": 89,
+    "commands": 90,
+    "wired": 90,
     "listed": 0,
-    "poc_extra": 4,
+    "poc_extra": 5,
     "dynamic_not_in_static_catalog": 4
   },
   "how_wezterm_builds_it": {
@@ -36,12 +36,12 @@
     },
     {
       "id": "copy_mode_and_search",
-      "detail": "049: ActivateCopyMode is simplified hjkl/v/y on TermPane (Esc exits, y/Enter copies). Search is a Picker of visible lines. Ctrl+Shift+F stays the gpui-fps HUD (019).",
+      "detail": "049: ActivateCopyMode is simplified hjkl/v/y on TermPane (Esc exits, y/Enter copies). 050: Search is a vim-style bottom bar (Ctrl+Shift+F); 049 line Picker is behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT.",
       "blocked_by": []
     },
     {
       "id": "splits",
-      "detail": "Split H/V are 040. 046 pane dir/rotate/zoom. 048 AdjustPaneSize. 049 PaneSelect overlay (activate/swap/move tab/window) is Wired.",
+      "detail": "Split H/V are 040. 046 pane dir/rotate/zoom. 048 AdjustPaneSize. 050 PaneSelect is a letter badge on each leaf (049 Picker behind flag).",
       "blocked_by": []
     },
     {
@@ -52,6 +52,16 @@
     {
       "id": "launch_menu_and_augment",
       "detail": "049: lua launch_menu items appear in the ShowLauncher Picker. augment-command-palette still not honored.",
+      "blocked_by": []
+    },
+    {
+      "id": "debug_overlay_lua_repl",
+      "detail": "050: ShowDebugOverlay notifies that the lua REPL is not implemented. wezterm-gui is a termwiz lua REPL. Do not start unless asked.",
+      "blocked_by": []
+    },
+    {
+      "id": "picker_search_quickselect_paneselect",
+      "detail": "049 searchable Picker for Search / QuickSelect / PaneSelect is parked behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT (default false). Revisit later; do not delete picker.rs path.",
       "blocked_by": []
     }
   ],
@@ -87,7 +97,7 @@
       "core": "wezterm-gui spawn_command NewWindow",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: cx.open_window + AppShell::new. Second HWND, same mux. Not in-process embed."
+      "notes": "049: cx.open_window + AppShell::new. 050: origin +48px. 051: cascade until no visible HWND shares that top-left; new HWND is activated."
     },
     {
       "id": "SplitVertical",
@@ -252,7 +262,7 @@
       "core": "none — termwiz QuickSelectOverlay labels on the pane",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: Picker of visible whitespace tokens; Enter copies. Not on-pane labels."
+      "notes": "050: letter labels on visible regex matches (wezterm-gui overlay/quickselect.rs PATTERNS); type the label to copy. 049 Picker path behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT."
     },
     {
       "id": "CharSelect",
@@ -472,7 +482,7 @@
       "core": "none — CopyOverlay editing_search + search_mode key table",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: Picker of visible pane lines; Enter jumps. Ctrl+Shift+F stays FPS HUD (019)."
+      "notes": "050: vim-style bar at the bottom of the pane (Search: query (n/total matches. case-sensitive)); yellow current / pink other hits. Ctrl+Shift+F. Copy (palette / Ctrl+Shift+C) copies the current hit (051). 049 line Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Ctrl+R toggles case."
     },
     {
       "id": "PaneSelect.*",
@@ -483,7 +493,7 @@
       "core": "mux tab pane list; UI is box-model PaneSelector",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: Picker over GPUI split leaves. Activate / swap / keep-focus / move to new tab / new window. Catalog ids: PaneSelect.Activate, .SwapWithActive, .SwapWithActiveKeepFocus, .MoveToNewTab, .MoveToNewWindow."
+      "notes": "050: centered letter badge on each GPUI split leaf (quick_select_alphabet). Activate / swap / keep-focus / move to new tab / new window. 049 Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Catalog ids: PaneSelect.Activate, .SwapWithActive, .SwapWithActiveKeepFocus, .MoveToNewTab, .MoveToNewWindow."
     },
     {
       "id": "RotatePanes.*",
@@ -516,7 +526,7 @@
       "core": "none — wezterm-gui Connection window list",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: cx.windows() + activate_window. Catalog ActivateWindow.0..9 + Relative ±1."
+      "notes": "050: deferred activate_window + Win32 SetForegroundWindow (in-update WindowHandle::update was a no-op). Catalog ActivateWindow.0..9 + Relative ±1."
     },
     {
       "id": "MoveTabRelative.*",
@@ -626,7 +636,7 @@
       "core": "none — termwiz Lua REPL overlay",
       "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "049: Picker with pane debug dump (copy to clipboard). Not a lua REPL."
+      "notes": "050: notify that the lua REPL is not implemented. 049 dump Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Backlog: debug_overlay_lua_repl."
     },
     {
       "id": "QuitApplication",
@@ -675,6 +685,18 @@
       "user_try": "not_tested",
       "poc_extra": true,
       "notes": "Local title_override only."
+    },
+    {
+      "id": "ToggleFpsHud",
+      "brief": "Toggle FPS HUD",
+      "action": "POC gpui-fps overlay",
+      "menubar": "Help",
+      "kind": "gpui_window",
+      "core": "none — gpui-fps",
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "poc_extra": true,
+      "notes": "050: palette only (019 Ctrl+Shift+F moved to Search). No shortcut."
     },
     {
       "id": "dynamic.launch_menu",

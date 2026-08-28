@@ -1,0 +1,6 @@
+{
+  "id": "050-overlay-parity-and-scrollbar",
+  "at": "2026-08-28T13:10:00Z",
+  "decision": "match_wezterm_search_quickselect_paneselect_keep_049_picker_behind_flag",
+  "rationale": "User compared 049 Picker overlays to wezterm-gui screenshots. Search is a bottom vim-style bar with in-pane highlights; Quick Select labels matches in the viewport; Pane Select is a letter badge centered on each leaf. Keep the 049 Picker path behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT (default false) to revisit. Ctrl+Shift+F is Search; FPS HUD is palette-only. New Window offsets +48px. ActivateWindow defers HWND raise because in-update WindowHandle::update is a no-op. Debug overlay lua REPL is notify+backlog. Honor lua enable_scroll_bar with a GPUI rail. Do not start 026/031 or window/ cutover."
+}

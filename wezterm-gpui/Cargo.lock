@@ -8679,6 +8679,7 @@ dependencies = [
  "portable-pty",
  "promise",
  "raw-window-handle",
+ "regex",
  "termwiz",
  "wezterm-bidi",
  "wezterm-font",

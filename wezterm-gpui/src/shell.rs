@@ -40,7 +40,7 @@ actions!(
         NewTab,
         CloseTab,
         QuitPoc,
-        ToggleFps,
+        OpenSearch,
         CopySelection,
         PasteClipboard,
     ]
@@ -56,7 +56,7 @@ pub fn bind_keys(cx: &mut App) {
         KeyBinding::new("ctrl-t", NewTab, None),
         KeyBinding::new("ctrl-w", CloseTab, None),
         KeyBinding::new("ctrl-q", QuitPoc, None),
-        KeyBinding::new("ctrl-shift-f", ToggleFps, None),
+        KeyBinding::new("ctrl-shift-f", OpenSearch, None),
         KeyBinding::new("ctrl-shift-c", CopySelection, Some(APP_CONTEXT)),
         KeyBinding::new("ctrl-shift-v", PasteClipboard, Some(APP_CONTEXT)),
         KeyBinding::new("ctrl-insert", CopySelection, Some(APP_CONTEXT)),
@@ -114,6 +114,20 @@ enum PickerKind {
     Debug,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PaneSelectMode {
+    Activate,
+    Swap,
+    SwapKeep,
+    MoveTab,
+    MoveWindow,
+}
+
+struct PaneSelectState {
+    mode: PaneSelectMode,
+    typed: String,
+}
+
 pub struct AppShell {
     focus_handle: FocusHandle,
     tabs: Vec<ShellTab>,
@@ -125,9 +139,13 @@ pub struct AppShell {
     palette_open: bool,
     picker: Entity<Picker>,
     picker_kind: Option<PickerKind>,
-    /// gpui-fps HUD. Off by default (019). Ctrl+Shift+F toggles.
-    /// While visible the stock monitor is continuous (sustain FPS).
+    /// gpui-fps HUD. Off by default (019). Palette ToggleFpsHud only (050).
     show_fps: bool,
+    search_open: bool,
+    search_query: String,
+    search_case: bool,
+    search_current: usize,
+    pane_select: Option<PaneSelectState>,
     /// Root wraps us after `new`; focus once on first paint so keys work
     /// without a right-click.
     focus_pending: bool,
@@ -221,6 +239,11 @@ impl AppShell {
             picker,
             picker_kind: None,
             show_fps: false,
+            search_open: false,
+            search_query: String::new(),
+            search_case: true,
+            search_current: 0,
+            pane_select: None,
             focus_pending: true,
             shells,
             next_split_id: 1,
@@ -228,7 +251,7 @@ impl AppShell {
             window_level: WindowZOrder::Normal,
         };
         if let Some(term) = first_term {
-            this.watch_pane(term, cx);
+            this.watch_pane(term, window, cx);
         }
         this
     }
@@ -281,7 +304,7 @@ impl AppShell {
     fn apply_command(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         match id {
             "SpawnTab.CurrentPaneDomain" => {
-                self.add_tab(cx);
+                self.add_tab(window, cx);
                 self.request_terminal_focus(window, cx);
             }
             "SplitHorizontal" => self.split_active(SplitAxis::Horizontal, window, cx),
@@ -367,9 +390,9 @@ impl AppShell {
             "PasteFrom.Clipboard" => {
                 self.paste_clipboard(window, cx, true);
             }
-            "ActivateCommandPalette" => self.palette_open = true,
+            "ActivateCommandPalette" => self.open_palette(window, cx),
             "ReloadConfiguration" => self.reload_configuration(window, cx),
-            "SpawnWindow" => self.spawn_window(cx),
+            "SpawnWindow" => self.spawn_window(window, cx),
             "DetachDomain.CurrentPaneDomain" => {
                 window.push_notification(
                     Notification::info("The local domain cannot be detached"),
@@ -379,30 +402,29 @@ impl AppShell {
             "ShowLauncher" => self.open_picker(PickerKind::Launcher, window, cx),
             "PasteFrom.PrimarySelection" => self.paste_clipboard(window, cx, true),
             "CopyTo.PrimarySelection" => self.copy_selection(window, cx, true),
-            "QuickSelect" => self.open_picker(PickerKind::QuickSelect, window, cx),
+            "QuickSelect" => self.open_quick_select(window, cx),
             "CharSelect" => self.open_picker(PickerKind::CharSelect, window, cx),
             "ActivateCopyMode" => self.enter_copy_mode(cx),
             "ClearKeyTableStack" => {
                 window.push_notification(Notification::info("Key table stack is empty"), cx);
             }
-            "Search" => self.open_picker(PickerKind::Search, window, cx),
+            "Search" => self.open_search(window, cx),
             "ShowTabNavigator" => self.open_picker(PickerKind::TabNav, window, cx),
-            "ShowDebugOverlay" => self.open_picker(PickerKind::Debug, window, cx),
-            "PaneSelect.Activate" => {
-                self.open_picker(PickerKind::PaneSelectActivate, window, cx)
-            }
+            "ShowDebugOverlay" => self.show_debug_overlay(window, cx),
+            "PaneSelect.Activate" => self.open_pane_select(PaneSelectMode::Activate, window, cx),
             "PaneSelect.SwapWithActive" => {
-                self.open_picker(PickerKind::PaneSelectSwap, window, cx)
+                self.open_pane_select(PaneSelectMode::Swap, window, cx)
             }
             "PaneSelect.SwapWithActiveKeepFocus" => {
-                self.open_picker(PickerKind::PaneSelectSwapKeep, window, cx)
+                self.open_pane_select(PaneSelectMode::SwapKeep, window, cx)
             }
             "PaneSelect.MoveToNewTab" => {
-                self.open_picker(PickerKind::PaneSelectMoveTab, window, cx)
+                self.open_pane_select(PaneSelectMode::MoveTab, window, cx)
             }
             "PaneSelect.MoveToNewWindow" => {
-                self.open_picker(PickerKind::PaneSelectMoveWindow, window, cx)
+                self.open_pane_select(PaneSelectMode::MoveWindow, window, cx)
             }
+            "ToggleFpsHud" => self.toggle_fps_hud(cx),
             "RenameTab" | "PromptInputLine" => {
                 self.open_rename_prompt(window, cx);
             }
@@ -488,12 +510,17 @@ impl AppShell {
         }
     }
 
-    fn add_tab(&mut self, cx: &mut Context<Self>) {
+    fn add_tab(&mut self, window: &Window, cx: &mut Context<Self>) {
         let profile = self.default_profile();
-        self.add_tab_profile(&profile, cx);
+        self.add_tab_profile(&profile, window, cx);
     }
 
-    fn add_tab_profile(&mut self, profile: &ShellProfile, cx: &mut Context<Self>) {
+    fn add_tab_profile(
+        &mut self,
+        profile: &ShellProfile,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
         let tab = Self::new_tab(
             self.font_px,
             self.focus_handle.clone(),
@@ -507,7 +534,7 @@ impl AppShell {
         self.tabs.push(tab);
         self.active = self.tabs.len() - 1;
         if let Some(term) = term {
-            self.watch_pane(term, cx);
+            self.watch_pane(term, window, cx);
         }
         self.sync_pane_focus(cx);
     }
@@ -558,12 +585,12 @@ impl AppShell {
         }
     }
 
-    fn watch_pane(&mut self, term: Entity<TermPane>, cx: &mut Context<Self>) {
-        cx.subscribe(&term, |this, pane, event, cx| {
+    fn watch_pane(&mut self, term: Entity<TermPane>, window: &Window, cx: &mut Context<Self>) {
+        cx.subscribe_in(&term, window, |this, pane, event, window, cx| {
             match event {
                 TermPaneEvent::Exited => {
                     if let Some(index) = this.tabs.iter().position(|t| t.layout.contains(&pane)) {
-                        this.dismiss_exited_pane(index, pane, cx);
+                        this.dismiss_exited_pane(index, pane.clone(), window, cx);
                     }
                 }
                 TermPaneEvent::Activated => {
@@ -580,13 +607,13 @@ impl AppShell {
         .detach();
     }
 
-    /// Process already gone (`exit`). No confirm. Last pane of last tab → quit
-    /// the app, same as wezterm-gui `exit_behavior = Close` +
-    /// `quit_when_all_windows_are_closed`. A split sibling just goes away.
+    /// Process already gone (`exit`). No confirm. Last pane of last tab closes
+    /// this HWND; `cx.quit()` only when it was the last window (033 + 052).
     fn dismiss_exited_pane(
         &mut self,
         tab_index: usize,
         pane: Entity<TermPane>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(tab) = self.tabs.get_mut(tab_index) else {
@@ -595,7 +622,7 @@ impl AppShell {
         let empty = tab.layout.remove_pane(&pane);
         tab.retain_split_states();
         if empty && self.remove_tab_at(tab_index) {
-            cx.quit();
+            close_this_window_or_quit(window, cx);
             return;
         }
         self.sync_pane_focus(cx);
@@ -604,7 +631,7 @@ impl AppShell {
     }
 
     fn spawn_profile(&mut self, profile: &ShellProfile, window: &mut Window, cx: &mut Context<Self>) {
-        self.add_tab_profile(profile, cx);
+        self.add_tab_profile(profile, window, cx);
         self.request_terminal_focus(window, cx);
         cx.notify();
     }
@@ -690,7 +717,7 @@ impl AppShell {
             return;
         }
         if self.tabs.len() <= 1 {
-            self.confirm_quit(window, cx);
+            self.confirm_close_window(window, cx);
             return;
         }
         let skip = self.tabs[index].can_close_without_prompting(mux::pane::CloseReason::Tab, cx);
@@ -743,7 +770,7 @@ impl AppShell {
             tab.layout.split(axis, term.clone(), id);
             tab.split_states.insert(id, state);
         }
-        self.watch_pane(term, cx);
+        self.watch_pane(term, window, cx);
         self.sync_pane_focus(cx);
         self.request_terminal_focus(window, cx);
         cx.notify();
@@ -824,6 +851,10 @@ impl AppShell {
         if self.picker_kind.is_some() {
             self.close_picker(window, cx);
         }
+        if self.pane_select.is_some() {
+            self.pane_select = None;
+        }
+        self.with_active_term(cx, |term, _| term.exit_quick_select());
     }
 
     fn close_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1105,7 +1136,7 @@ impl AppShell {
             return;
         }
         if id == "launch:window" {
-            self.spawn_window(cx);
+            self.spawn_window(window, cx);
             return;
         }
         if id == "launch:splith" {
@@ -1199,7 +1230,7 @@ impl AppShell {
         self.tabs.push(tab);
         self.last_active = Some(self.active.min(self.tabs.len().saturating_sub(1)));
         self.active = self.tabs.len() - 1;
-        self.watch_pane(pane, cx);
+        self.watch_pane(pane, window, cx);
         self.sync_pane_focus(cx);
         self.request_terminal_focus(window, cx);
         cx.notify();
@@ -1213,7 +1244,7 @@ impl AppShell {
             return;
         };
         if tab.layout.pane_count() < 2 && self.tabs.len() < 2 {
-            self.spawn_window(cx);
+            self.spawn_window(window, cx);
             return;
         }
         let Some(pane) = tab.layout.panes().get(i).cloned() else {
@@ -1223,40 +1254,55 @@ impl AppShell {
         let extracted = self.tabs[tab_index].layout.extract_pane(&pane);
         self.tabs[tab_index].retain_split_states();
         let Some((pane, empty)) = extracted else {
-            self.spawn_window(cx);
+            self.spawn_window(window, cx);
             return;
         };
         if empty {
             let _ = self.remove_tab_at(tab_index);
         }
-        let opts = app_window_options(cx);
-        let _ = cx.open_window(opts, move |window, cx| {
+        let opts = app_window_options_offset(window, cx);
+        if let Ok(handle) = cx.open_window(opts, move |window, cx| {
             let view = cx.new(|cx| AppShell::build(window, cx, Some(pane.clone())));
             let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
             view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
             root
-        });
+        }) {
+            focus_opened_window(handle, cx);
+        }
         self.sync_pane_focus(cx);
-        self.request_terminal_focus(window, cx);
         cx.notify();
     }
 
-    fn spawn_window(&mut self, cx: &mut Context<Self>) {
-        let opts = app_window_options(cx);
-        let _ = cx.open_window(opts, |window, cx| {
+    fn spawn_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let opts = app_window_options_offset(window, cx);
+        if let Ok(handle) = cx.open_window(opts, |window, cx| {
             let view = cx.new(|cx| AppShell::new(window, cx));
             let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
             view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
             root
-        });
+        }) {
+            focus_opened_window(handle, cx);
+        }
     }
 
-    fn activate_window_at(&mut self, n: usize, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(h) = cx.windows().get(n).copied() {
-            let _ = h.update(cx, |_, w, _| {
-                w.activate_window();
-            });
+    fn activate_window_at(&mut self, n: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(h) = cx.windows().get(n).copied() else {
+            return;
+        };
+        if h == window.window_handle() {
+            window.activate_window();
+            crate::win_zorder::bring_to_front(window);
+            return;
         }
+        cx.spawn(async move |_, cx| {
+            let _ = cx.update(|cx| {
+                h.update(cx, |_, window, _| {
+                    window.activate_window();
+                    crate::win_zorder::bring_to_front(window);
+                })
+            });
+        })
+        .detach();
     }
 
     fn activate_window_relative(
@@ -1279,10 +1325,286 @@ impl AppShell {
     }
 
     fn enter_copy_mode(&mut self, cx: &mut Context<Self>) {
+        self.close_search(cx);
+        self.pane_select = None;
         self.with_active_term(cx, |term, cx| {
+            term.exit_quick_select();
             term.enter_copy_mode();
             cx.notify();
         });
+        cx.notify();
+    }
+
+    fn open_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::find::PICKER_SEARCH_QUICKSELECT_PANESELECT {
+            self.open_picker(PickerKind::Search, window, cx);
+            return;
+        }
+        if self.search_open {
+            self.close_search(cx);
+            return;
+        }
+        self.palette_open = false;
+        self.picker_kind = None;
+        self.pane_select = None;
+        let seed = self
+            .tabs
+            .get(self.active)
+            .and_then(|t| t.layout.active_pane())
+            .map(|term| term.read(cx).selection_plain_text())
+            .unwrap_or_default();
+        self.search_query = if seed.contains('\n') {
+            String::new()
+        } else {
+            seed
+        };
+        self.search_case = true;
+        self.search_current = 0;
+        self.search_open = true;
+        self.with_active_term(cx, |term, _| term.exit_quick_select());
+        self.sync_search(cx);
+        cx.notify();
+    }
+
+    fn close_search(&mut self, cx: &mut Context<Self>) {
+        self.search_open = false;
+        self.with_active_term(cx, |term, cx| {
+            term.clear_search();
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    fn sync_search(&mut self, cx: &mut Context<Self>) {
+        if !self.search_open {
+            return;
+        }
+        let query = self.search_query.clone();
+        let case = self.search_case;
+        let mut current = self.search_current;
+        self.with_active_term(cx, |term, cx| {
+            term.set_search(&query, case, current);
+            if let Some((_, shown, total, _)) = term.search_status() {
+                current = if total == 0 { 0 } else { shown.saturating_sub(1) };
+            }
+            cx.notify();
+        });
+        self.search_current = current;
+    }
+
+    fn search_step(&mut self, delta: isize, cx: &mut Context<Self>) {
+        let mut current = self.search_current;
+        self.with_active_term(cx, |term, cx| {
+            term.search_step(delta);
+            if let Some((_, shown, total, _)) = term.search_status() {
+                current = if total == 0 { 0 } else { shown.saturating_sub(1) };
+            }
+            cx.notify();
+        });
+        self.search_current = current;
+        cx.notify();
+    }
+
+    fn search_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let ks = &event.keystroke;
+        let key = ks.key.as_str();
+        // Palette / Search toggles must reach their actions (051 Copy was
+        // swallowed here because any Control key returned true).
+        if ks.modifiers.control && ks.modifiers.shift && matches!(key, "f" | "p") {
+            return false;
+        }
+        if ks.modifiers.control && !ks.modifiers.shift && key == "p" {
+            return false;
+        }
+        if (ks.modifiers.control && ks.modifiers.shift && key == "c")
+            || (ks.modifiers.control && key == "insert")
+        {
+            self.copy_selection(window, cx, false);
+            return true;
+        }
+        if (ks.modifiers.control && ks.modifiers.shift && key == "v")
+            || (ks.modifiers.shift && key == "insert")
+        {
+            return false;
+        }
+        if key == "escape" {
+            self.close_search(cx);
+            return true;
+        }
+        if key == "enter" || key == "return" || key == "down" {
+            let delta = if ks.modifiers.shift || key == "up" {
+                -1
+            } else {
+                1
+            };
+            self.search_step(delta, cx);
+            return true;
+        }
+        if key == "up" {
+            self.search_step(-1, cx);
+            return true;
+        }
+        if key == "backspace" {
+            self.search_query.pop();
+            self.search_current = 0;
+            self.sync_search(cx);
+            cx.notify();
+            return true;
+        }
+        if ks.modifiers.control && key == "r" {
+            self.search_case = !self.search_case;
+            self.search_current = 0;
+            self.sync_search(cx);
+            cx.notify();
+            return true;
+        }
+        if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
+            return true;
+        }
+        let ch = ks
+            .key_char
+            .as_deref()
+            .and_then(|s| s.chars().next())
+            .or_else(|| key.chars().next().filter(|_| key.len() == 1));
+        let ch = if key == "space" {
+            Some(' ')
+        } else {
+            ch.filter(|c| !c.is_control())
+        };
+        if let Some(ch) = ch {
+            self.search_query.push(ch);
+            self.search_current = 0;
+            self.sync_search(cx);
+            cx.notify();
+        }
+        true
+    }
+
+    fn open_quick_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::find::PICKER_SEARCH_QUICKSELECT_PANESELECT {
+            self.open_picker(PickerKind::QuickSelect, window, cx);
+            return;
+        }
+        self.close_search(cx);
+        self.pane_select = None;
+        self.with_active_term(cx, |term, cx| {
+            term.enter_quick_select();
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    fn open_pane_select(
+        &mut self,
+        mode: PaneSelectMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if crate::find::PICKER_SEARCH_QUICKSELECT_PANESELECT {
+            let kind = match mode {
+                PaneSelectMode::Activate => PickerKind::PaneSelectActivate,
+                PaneSelectMode::Swap => PickerKind::PaneSelectSwap,
+                PaneSelectMode::SwapKeep => PickerKind::PaneSelectSwapKeep,
+                PaneSelectMode::MoveTab => PickerKind::PaneSelectMoveTab,
+                PaneSelectMode::MoveWindow => PickerKind::PaneSelectMoveWindow,
+            };
+            self.open_picker(kind, window, cx);
+            return;
+        }
+        self.close_search(cx);
+        self.with_active_term(cx, |term, _| term.exit_quick_select());
+        if let Some(tab) = self.tabs.get_mut(self.active) {
+            tab.layout.unzoom();
+        }
+        self.pane_select = Some(PaneSelectState {
+            mode,
+            typed: String::new(),
+        });
+        cx.notify();
+    }
+
+    fn pane_select_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let ks = &event.keystroke;
+        let key = ks.key.as_str();
+        if key == "escape" {
+            self.pane_select = None;
+            cx.notify();
+            return true;
+        }
+        if key == "backspace" {
+            if let Some(ps) = &mut self.pane_select {
+                ps.typed.pop();
+            }
+            cx.notify();
+            return true;
+        }
+        if ks.modifiers.control || ks.modifiers.alt || ks.modifiers.platform {
+            return true;
+        }
+        let ch = ks
+            .key_char
+            .as_deref()
+            .and_then(|s| s.chars().next())
+            .or_else(|| key.chars().next().filter(|_| key.len() == 1));
+        let Some(ch) = ch.filter(|c| c.is_ascii_alphanumeric()) else {
+            return true;
+        };
+        let Some(ps) = self.pane_select.as_mut() else {
+            return true;
+        };
+        ps.typed.push(ch.to_ascii_lowercase());
+        let typed = ps.typed.clone();
+        let mode = ps.mode;
+        let n = self
+            .tabs
+            .get(self.active)
+            .map(|t| t.layout.pane_count())
+            .unwrap_or(0);
+        let labels = crate::find::compute_labels_for_alphabet(&crate::find::alphabet(), n);
+        if let Some(i) = labels.iter().position(|l| *l == typed) {
+            self.pane_select = None;
+            let id = format!("pane:{i}");
+            match mode {
+                PaneSelectMode::Activate => self.pane_select_activate(&id, cx),
+                PaneSelectMode::Swap => self.pane_select_swap(&id, false, cx),
+                PaneSelectMode::SwapKeep => self.pane_select_swap(&id, true, cx),
+                PaneSelectMode::MoveTab => self.pane_select_move_tab(&id, window, cx),
+                PaneSelectMode::MoveWindow => self.pane_select_move_window(&id, window, cx),
+            }
+            return true;
+        }
+        if !labels.iter().any(|l| l.starts_with(&typed)) {
+            if let Some(ps) = &mut self.pane_select {
+                ps.typed.clear();
+            }
+        }
+        cx.notify();
+        true
+    }
+
+    fn show_debug_overlay(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if crate::find::PICKER_SEARCH_QUICKSELECT_PANESELECT {
+            self.open_picker(PickerKind::Debug, window, cx);
+            return;
+        }
+        window.push_notification(
+            Notification::info("Debug overlay Lua REPL is not implemented yet"),
+            cx,
+        );
+    }
+
+    fn toggle_fps_hud(&mut self, cx: &mut Context<Self>) {
+        self.show_fps = !self.show_fps;
         cx.notify();
     }
 
@@ -1353,12 +1675,48 @@ impl AppShell {
         let empty = tab.layout.remove_pane(&pane);
         tab.retain_split_states();
         if empty && self.remove_tab_at(tab_index) {
-            cx.quit();
+            close_this_window_or_quit(window, cx);
             return;
         }
         self.sync_pane_focus(cx);
         self.request_terminal_focus(window, cx);
         cx.notify();
+    }
+
+    /// Last tab of this HWND. Other windows stay up (052). Last HWND still
+    /// quits, same as wezterm-gui `quit_when_all_windows_are_closed`.
+    fn confirm_close_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let policy = config::configuration().window_close_confirmation;
+        let all_skip = self
+            .tabs
+            .iter()
+            .all(|t| t.can_close_without_prompting(mux::pane::CloseReason::Window, cx));
+        if !wants_quit_prompt(policy, all_skip) {
+            close_this_window_or_quit(window, cx);
+            return;
+        }
+        let last_hwnd = cx.windows().len() <= 1;
+        let (title, message, button) = if last_hwnd {
+            ("Quit WezTerm?", "🛑 Really Quit WezTerm?", "Quit")
+        } else {
+            (
+                "Close window?",
+                "🛑 Really close this window and all contained tabs?",
+                "Close",
+            )
+        };
+        self.focus_terminal(window, cx);
+        let restore = Self::dialog_restore(cx.entity());
+        open_confirm(
+            window,
+            cx,
+            title,
+            message,
+            button,
+            true,
+            |window, cx| close_this_window_or_quit(window, cx),
+            restore,
+        );
     }
 
     fn confirm_quit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1440,6 +1798,8 @@ impl AppShell {
     }
 
     fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pane_select = None;
+        self.with_active_term(cx, |term, _| term.exit_quick_select());
         self.picker_kind = None;
         self.palette_open = true;
         self.palette.update(cx, |p, cx| p.focus_search(window, cx));
@@ -1501,7 +1861,7 @@ impl AppShell {
     }
 
     fn on_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
-        self.add_tab(cx);
+        self.add_tab(window, cx);
         self.request_terminal_focus(window, cx);
         cx.notify();
     }
@@ -1516,18 +1876,21 @@ impl AppShell {
         self.confirm_quit(window, cx);
     }
 
-    fn toggle_fps(&mut self, _: &ToggleFps, _: &mut Window, cx: &mut Context<Self>) {
-        self.show_fps = !self.show_fps;
-        cx.notify();
+    fn on_open_search(&mut self, _: &OpenSearch, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_search(window, cx);
     }
 
     fn copy_selection(&mut self, window: &mut Window, cx: &mut Context<Self>, notify: bool) {
-        let copied = self
+        let mut copied = self
             .tabs
             .get(self.active)
             .and_then(|tab| tab.layout.active_pane())
             .map(|term| term.update(cx, |term, cx| term.copy_selection(cx)))
             .unwrap_or(false);
+        if !copied && self.search_open && !self.search_query.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(self.search_query.clone()));
+            copied = true;
+        }
         if notify {
             if copied {
                 window.push_notification(Notification::info("Copied to clipboard"), cx);
@@ -1572,7 +1935,22 @@ impl AppShell {
     }
 
     fn on_term_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.overlay_open() || window.has_active_dialog(cx) {
+        if window.has_active_dialog(cx) {
+            return;
+        }
+        if self.palette_open || self.picker_kind.is_some() {
+            return;
+        }
+        if self.search_open {
+            if self.search_key(event, window, cx) {
+                cx.stop_propagation();
+            }
+            return;
+        }
+        if self.pane_select.is_some() {
+            if self.pane_select_key(event, window, cx) {
+                cx.stop_propagation();
+            }
             return;
         }
         if let Some(term) = self
@@ -1599,14 +1977,26 @@ impl Render for AppShell {
         }
         let active = self.active.min(self.tabs.len().saturating_sub(1));
         let pane_body = self.tabs.get(active).map(|t| {
+            let pane_labels = self.pane_select.as_ref().map(|_| {
+                crate::find::compute_labels_for_alphabet(
+                    &crate::find::alphabet(),
+                    t.layout.pane_count(),
+                )
+            });
             if t.layout.is_zoomed() {
                 render_split_tree(
                     &LayoutNode::leaf(t.layout.active_index()),
                     t.layout.panes(),
                     &t.split_states,
+                    pane_labels.as_deref(),
                 )
             } else {
-                render_split_tree(t.layout.root(), t.layout.panes(), &t.split_states)
+                render_split_tree(
+                    t.layout.root(),
+                    t.layout.panes(),
+                    &t.split_states,
+                    pane_labels.as_deref(),
+                )
             }
         });
         let cfg = config::configuration();
@@ -1640,6 +2030,29 @@ impl Render for AppShell {
             .get(active)
             .map(|t| t.title(cx))
             .unwrap_or_else(|| "—".into());
+        let search_bar = if self.search_open {
+            let (query, shown, total, case) = self
+                .tabs
+                .get(active)
+                .and_then(|t| t.layout.active_pane())
+                .and_then(|term| term.read(cx).search_status())
+                .unwrap_or_else(|| {
+                    (
+                        self.search_query.clone(),
+                        0,
+                        0,
+                        self.search_case,
+                    )
+                });
+            let mode = if case {
+                "case-sensitive"
+            } else {
+                "ignore-case"
+            };
+            Some(format!("Search: {query} ({shown}/{total} matches. {mode})"))
+        } else {
+            None
+        };
         let status_line = self
             .tabs
             .get(active)
@@ -1668,7 +2081,7 @@ impl Render for AppShell {
             .on_action(cx.listener(Self::on_new_tab))
             .on_action(cx.listener(Self::on_close_tab))
             .on_action(cx.listener(Self::on_quit))
-            .on_action(cx.listener(Self::toggle_fps))
+            .on_action(cx.listener(Self::on_open_search))
             .on_action(cx.listener(Self::on_copy))
             .on_action(cx.listener(Self::on_paste))
             .on_key_down(cx.listener(Self::on_term_key))
@@ -1736,7 +2149,7 @@ impl Render for AppShell {
                                         .xsmall()
                                         .tooltip(plus_tip)
                                         .on_click(cx.listener(|this, _, window, cx| {
-                                            this.add_tab(cx);
+                                            this.add_tab(window, cx);
                                             this.request_terminal_focus(window, cx);
                                             cx.notify();
                                         })),
@@ -1770,6 +2183,21 @@ impl Render for AppShell {
                     .bg(rgb(0x0c0c0c))
                     .when_some(pane_body, |this, body| this.child(body)),
             )
+            .when_some(search_bar, |this, text| {
+                this.child(
+                    div()
+                        .id("search-bar")
+                        .w_full()
+                        .px_3()
+                        .py_1()
+                        .bg(rgb(0xe8e8e8))
+                        .child(
+                            Label::new(text)
+                                .text_size(px(13.))
+                                .text_color(rgb(0x111111)),
+                        ),
+                )
+            })
             .child(
                 div()
                     .id("status-bar")
@@ -1780,7 +2208,7 @@ impl Render for AppShell {
                     .border_color(cx.theme().border)
                     .child(
                         Label::new(format!(
-                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F fps  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain",
+                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F search  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain",
                             crate::mux_host::config_status(),
                             status_title,
                             status_line
@@ -1850,13 +2278,84 @@ fn overlay_scrim(
         )
 }
 
-fn app_window_options(cx: &App) -> WindowOptions {
+fn app_window_options_offset(from: &Window, cx: &App) -> WindowOptions {
+    let current = from.bounds();
+    let size = if current.size.width > px(1.) && current.size.height > px(1.) {
+        current.size
+    } else {
+        size(px(980.), px(640.))
+    };
+    let origin = cascade_origin(from);
+    app_window_options_at(
+        Some(Bounds { origin, size }),
+        cx,
+    )
+}
+
+/// Pick a top-left that no visible HWND already occupies (050/051).
+fn cascade_origin(from: &Window) -> Point<Pixels> {
+    let gpui = from.bounds().origin;
+    let step = 48.0;
+    let slack = 24.0;
+    let Some((x0, y0)) = crate::win_zorder::hwnd_origin(from) else {
+        return point(gpui.x + px(step), gpui.y + px(step));
+    };
+    let scale = f32::from(from.scale_factor()).max(0.5);
+    let step_px = (step * scale).round().max(1.0) as i32;
+    let slack_px = (slack * scale).round().max(1.0) as i32;
+    let occupied = crate::win_zorder::visible_hwnd_origins();
+    let (x, y) = cascade_screen_origin((x0, y0), &occupied, step_px, slack_px);
+    let dx = (x - x0) as f32 / scale;
+    let dy = (y - y0) as f32 / scale;
+    point(gpui.x + px(dx), gpui.y + px(dy))
+}
+
+fn cascade_screen_origin(
+    start: (i32, i32),
+    occupied: &[(i32, i32)],
+    step: i32,
+    slack: i32,
+) -> (i32, i32) {
+    let mut x = start.0.saturating_add(step);
+    let mut y = start.1.saturating_add(step);
+    for _ in 0..32 {
+        if !occupied.iter().any(|(ox, oy)| {
+            ox.abs_diff(x) <= slack as u32 && oy.abs_diff(y) <= slack as u32
+        }) {
+            return (x, y);
+        }
+        x = x.saturating_add(step);
+        y = y.saturating_add(step);
+    }
+    (x, y)
+}
+
+/// Last pane/tab of this HWND. Other GPUI windows stay; last HWND quits.
+fn close_this_window_or_quit(window: &mut Window, cx: &mut App) {
+    if cx.windows().len() > 1 {
+        window.remove_window();
+    } else {
+        cx.quit();
+    }
+}
+
+fn focus_opened_window(handle: WindowHandle<Root>, cx: &mut Context<AppShell>) {
+    cx.spawn(async move |_, cx| {
+        let _ = cx.update(|cx| {
+            handle.update(cx, |_, window, _| {
+                window.activate_window();
+                crate::win_zorder::bring_to_front(window);
+            })
+        });
+    })
+    .detach();
+}
+
+fn app_window_options_at(bounds: Option<Bounds<Pixels>>, cx: &App) -> WindowOptions {
     WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-            None,
-            size(px(980.), px(640.)),
-            cx,
-        ))),
+        window_bounds: Some(WindowBounds::Windowed(bounds.unwrap_or_else(|| {
+            Bounds::centered(None, size(px(980.), px(640.)), cx)
+        }))),
         titlebar: Some(TitlebarOptions {
             title: Some("WezTerm GPUI".into()),
             ..TitleBar::title_bar_options()
@@ -1894,17 +2393,48 @@ fn render_split_tree(
     node: &LayoutNode,
     panes: &[Entity<TermPane>],
     states: &HashMap<u64, Entity<ResizableState>>,
+    pane_labels: Option<&[String]>,
 ) -> AnyElement {
     match node {
         LayoutNode::Leaf(i) => {
             let Some(pane) = panes.get(*i) else {
                 return div().into_any_element();
             };
+            let label = pane_labels.and_then(|labels| labels.get(*i)).cloned();
             div()
+                .relative()
                 .size_full()
                 .min_h_0()
                 .overflow_hidden()
                 .child(pane.clone())
+                .when_some(label, |this, lab| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .w(px(56.))
+                                    .h(px(56.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded_lg()
+                                    .bg(gpui::black().opacity(0.82))
+                                    .child(
+                                        div()
+                                            .text_size(px(28.))
+                                            .line_height(px(28.))
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(gpui::white())
+                                            .child(lab),
+                                    ),
+                            ),
+                    )
+                })
                 .into_any_element()
         }
         LayoutNode::Split {
@@ -1923,9 +2453,30 @@ fn render_split_tree(
                 group
             };
             group
-                .child(render_split_tree(first, panes, states))
-                .child(render_split_tree(second, panes, states))
+                .child(render_split_tree(first, panes, states, pane_labels))
+                .child(render_split_tree(second, panes, states, pane_labels))
                 .into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod cascade_tests {
+    use super::cascade_screen_origin;
+
+    #[test]
+    fn first_slot_free() {
+        assert_eq!(
+            cascade_screen_origin((100, 100), &[(100, 100)], 48, 24),
+            (148, 148)
+        );
+    }
+
+    #[test]
+    fn skips_occupied_cascade() {
+        assert_eq!(
+            cascade_screen_origin((100, 100), &[(100, 100), (148, 148)], 48, 24),
+            (196, 196)
+        );
     }
 }

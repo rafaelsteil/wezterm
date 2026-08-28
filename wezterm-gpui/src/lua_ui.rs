@@ -35,6 +35,10 @@ pub fn wants_tab_close_prompt(can_close_without_prompting: bool) -> bool {
     !can_close_without_prompting
 }
 
+pub fn enable_scroll_bar() -> bool {
+    config::configuration().enable_scroll_bar
+}
+
 /// Ctrl+Q / last-tab X. wezterm-gui `QuitApplication` always prompts on
 /// `AlwaysPrompt`; window-close does not if every pane is skip-listed.
 /// POC matches window-close so a default cmd.exe session does not prompt.

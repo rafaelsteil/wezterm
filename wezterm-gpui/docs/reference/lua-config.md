@@ -15,9 +15,9 @@ From `lua-config.json` `stats`:
 | Keys tracked | 27 |
 | User-ok | 14 |
 | Partial | 1 (Ctrl+click opens; no hover highlight) |
-| Not tested | 3 (`adjust_window_size`, skip-close keys) |
+| Not tested | 4 (`adjust_window_size`, skip-close keys, `enable_scroll_bar`) |
 | No visible change (already matched) | 3 (fancy tab bar, window decorations, title-button alignment) |
-| Not wired / parked | 6 |
+| Not wired / parked | 5 |
 
 ## Slices
 
@@ -27,11 +27,11 @@ From `lua-config.json` `stats`:
 | [034](../plans/034-lua-config-second-slice.md) | Tab chrome + user `mouse_bindings`. **User-ok** except hover highlight. |
 | [041](../plans/041-inactive-pane-hsb.md) | `inactive_pane_hsb`. **User-ok.** |
 | [042](../plans/042-palette-selection-contrast.md) | `command_palette_fg_color` / `command_palette_bg_color` invert on selected row. **User-ok.** |
+| [050](../plans/050-overlay-parity-and-scrollbar.md) | `enable_scroll_bar` rail + thumb. **Needs user-try.** |
 
 ## Do not start unless asked
 
 - Hyperlink **hover underline / hand cursor** (Ctrl+click open is already user-ok)
-- `enable_scroll_bar`
 - `max_fps`
 - Palette fonts (palette parked)
 - `default_prog` / `launch_menu` / live reload / `wezterm.on`

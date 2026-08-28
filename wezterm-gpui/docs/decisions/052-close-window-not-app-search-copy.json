@@ -1,0 +1,6 @@
+{
+  "id": "052-close-window-not-app-search-copy",
+  "at": "2026-08-28T13:45:00Z",
+  "decision": "last_tab_exit_closes_this_hwnd_and_search_copy_keeps_hits",
+  "rationale": "User after 051: last-tab/exit called cx.quit() and killed every HWND; Copy during Search still failed. remove_window when other GPUI windows exist; keep TermPane search when opening the palette; Ctrl+Shift+C copies the current hit instead of being swallowed. Ctrl+Q still quits the process. Do not start 026/031."
+}

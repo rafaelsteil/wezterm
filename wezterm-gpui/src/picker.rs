@@ -1,5 +1,6 @@
-//! Searchable overlay used by launcher, tab navigator, pane select, charselect,
-//! search, quickselect, and the debug dump. Same chrome as the command palette.
+//! Searchable overlay used by launcher, tab navigator, charselect, and (when
+//! `find::PICKER_SEARCH_QUICKSELECT_PANESELECT` is true) search / quickselect /
+//! paneselect. Same chrome as the command palette.
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;

@@ -881,6 +881,15 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         GpuiUi,
         Wired
     ),
+    cmd!(
+        "ToggleFpsHud",
+        "Toggle FPS HUD",
+        "Shows or hides the gpui-fps overlay (no shortcut; palette only)",
+        "Help",
+        "",
+        GpuiWindow,
+        Wired
+    ),
 ];
 
 #[cfg(test)]
@@ -977,6 +986,7 @@ mod tests {
             "ShowDebugOverlay",
             "PaneSelect.Activate",
             "ActivateWindow.0",
+            "ToggleFpsHud",
         ] {
             assert!(
                 command_by_id(id).is_some_and(|c| c.is_wired()),

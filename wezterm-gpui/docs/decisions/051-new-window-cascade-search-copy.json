@@ -1,0 +1,6 @@
+{
+  "id": "051-new-window-cascade-search-copy",
+  "at": "2026-08-28T13:30:00Z",
+  "decision": "cascade_new_window_off_occupied_hwnd_and_copy_search_hit",
+  "rationale": "User after 050: further New Window HWNDs stacked on the first +48 slot and kept source focus. Cascade origin until no visible HWND is at that top-left; defer activate on the new handle. Pane Select badge is a 56px square with matched line-height. Copy while searching uses the current hit. Do not start 026/031."
+}

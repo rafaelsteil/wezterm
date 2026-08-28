@@ -1,16 +1,16 @@
 {
   "id": "wezterm-gpui-lua-config",
   "schema_version": 1,
-  "updated": "2026-08-28T01:50:00Z",
+  "updated": "2026-08-28T13:10:00Z",
   "source_file": "C:\\Users\\rafael\\.wezterm.lua",
   "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
   "stats": {
     "keys": 27,
     "user_ok": 14,
     "partial": 1,
-    "not_tested": 3,
+    "not_tested": 4,
     "no_visible_change": 3,
-    "not_wired_or_parked": 6
+    "not_wired_or_parked": 5
   },
   "backlog": [
     {
@@ -22,7 +22,7 @@
     {
       "id": "enable_scroll_bar",
       "key": "enable_scroll_bar",
-      "detail": "User lua true. No GPUI scrollbar widget. Do not start unless asked.",
+      "detail": "050: GPUI rail + thumb when lua enable_scroll_bar is true (wezterm-gui ScrollHit formula). Needs user-try. Was parked until asked.",
       "blocked_by": []
     },
     {
@@ -209,11 +209,11 @@
       "key": "enable_scroll_bar",
       "in_user_lua": true,
       "user_value": "true",
-      "slice": null,
-      "gpui": "not_wired",
-      "user_try": "n_a",
-      "at": "2026-08-27T22:05:00Z",
-      "notes": "No scrollbar widget. Backlog. Do not start unless asked."
+      "slice": "050",
+      "gpui": "honored",
+      "user_try": "not_tested",
+      "at": "2026-08-28T13:10:00Z",
+      "notes": "050: per-pane 14px rail + thumb (click/drag). Formula from wezterm-gui ScrollHit. Needs user-try."
     },
     {
       "key": "max_fps",
