@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-command-palette",
   "schema_version": 1,
-  "updated": "2026-08-28T18:20:00Z",
+  "updated": "2026-08-28T23:55:00Z",
   "legacy": "wezterm-gui/src/commands.rs (CommandDef, compute_default_actions, derive_command_from_key_assignment) + termwindow/palette.rs build_commands. Execute: TermWindow::perform_key_assignment.",
   "gpui": "wezterm-gpui/src/commands.rs PALETTE_COMMANDS + palette.rs overlay (Ctrl+Shift+P). Dispatch by id; do not path-dep wezterm-gui.",
   "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Static PALETTE_COMMANDS is fully Wired (049). 050 adds ToggleFpsHud POC extra and matches wezterm search/quickselect/paneselect UI. Dynamic mux/lua rows stay listed. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm, ToggleFpsHud) are tagged poc_extra.",
   "stats": {
-    "commands": 90,
-    "wired": 90,
+    "commands": 93,
+    "wired": 93,
     "listed": 0,
     "poc_extra": 5,
     "dynamic_not_in_static_catalog": 4
@@ -463,6 +463,39 @@
       "notes": "047: same group. **User-ok** 2026-08-27 (“everything works”)."
     },
     {
+      "id": "workspace:create",
+      "brief": "Create new Workspace",
+      "action": "SwitchToWorkspace { name: None, spawn: None }",
+      "menubar": "Window | Workspace",
+      "kind": "gpui_window",
+      "core": "mux.generate_workspace_name + set_active_workspace",
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "notes": "055: static catalog row (wezterm-gui expanded_commands). Hide other HWNDs, spawn one HWND. Needs user-try."
+    },
+    {
+      "id": "workspace:relative:1",
+      "brief": "Switch to next workspace",
+      "action": "SwitchWorkspaceRelative(1)",
+      "menubar": "Window | Workspace",
+      "kind": "gpui_window",
+      "core": "mux.iter_workspaces wrap",
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "notes": "055: static catalog. Needs user-try."
+    },
+    {
+      "id": "workspace:relative:-1",
+      "brief": "Switch to previous workspace",
+      "action": "SwitchWorkspaceRelative(-1)",
+      "menubar": "Window | Workspace",
+      "kind": "gpui_window",
+      "core": "mux.iter_workspaces wrap",
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "notes": "055: static catalog. Needs user-try."
+    },
+    {
       "id": "Hide",
       "brief": "Hide/Minimize Window",
       "action": "Hide",
@@ -738,9 +771,9 @@
       "menubar": "Window",
       "kind": "dynamic",
       "core": "mux workspaces",
-      "gpui": "listed",
-      "user_try": "n_a",
-      "notes": "POC has no workspace switcher."
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "notes": "055: named switches are still dynamic. Create / next / previous are static PALETTE_COMMANDS (`workspace:create`, `workspace:relative:±1`). Hide/show HWNDs; keep SplitLayout. Needs user-try."
     }
   ]
 }

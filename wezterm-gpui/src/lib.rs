@@ -22,6 +22,7 @@ mod shells;
 mod split_layout;
 mod term_pane;
 mod win_zorder;
+mod workspaces;
 
 pub use hello::HelloWorld;
 pub use palette::CommandPalette;

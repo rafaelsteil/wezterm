@@ -30,6 +30,7 @@ pub struct Picker {
     items: Vec<PickerItem>,
     query: Entity<InputState>,
     selected: usize,
+    armed: bool,
     scroll: ScrollHandle,
 }
 
@@ -52,6 +53,7 @@ impl Picker {
             items: Vec::new(),
             query,
             selected: 0,
+            armed: true,
             scroll: ScrollHandle::new(),
         }
     }
@@ -66,6 +68,7 @@ impl Picker {
         self.title = title.into();
         self.items = items;
         self.selected = 0;
+        self.armed = true;
         self.reveal_selected();
         let placeholder = self.placeholder.clone();
         self.query.update(cx, |input, cx| {
@@ -92,7 +95,11 @@ impl Picker {
     }
 
     pub fn confirm(&mut self, cx: &mut Context<Self>) {
+        if !self.armed {
+            return;
+        }
         if let Some(item) = self.filtered(cx).into_iter().nth(self.selected) {
+            self.armed = false;
             cx.emit(PickerEvent::Confirmed(item.id));
         }
     }
@@ -181,7 +188,11 @@ impl Render for Picker {
                             .rounded_md()
                             .bg(row_bg)
                             .cursor_pointer()
-                            .on_click(cx.listener(move |_, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if !this.armed {
+                                    return;
+                                }
+                                this.armed = false;
                                 cx.emit(PickerEvent::Confirmed(id.clone()));
                             }))
                             .child(

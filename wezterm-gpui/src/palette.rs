@@ -44,6 +44,8 @@ pub struct CommandPalette {
     query: Entity<InputState>,
     selected: usize,
     last_ran: Option<String>,
+    /// One execute per palette open (click + Enter used to fire twice).
+    armed: bool,
     /// Overflow list does not follow `selected` on its own; wheel works
     /// because `.overflow_y_scroll` handles it. ↑↓ only mutated the index
     /// (045). Immediate children of the tracked div are the command rows.
@@ -72,12 +74,14 @@ impl CommandPalette {
             query,
             selected: 0,
             last_ran: None,
+            armed: true,
             scroll: ScrollHandle::new(),
         }
     }
 
     pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selected = 0;
+        self.armed = true;
         self.reveal_selected();
         self.query.update(cx, |input, cx| {
             input.set_value("", window, cx);
@@ -113,8 +117,12 @@ impl CommandPalette {
         cx.notify();
     }
 
-    fn all_rows() -> Vec<PaletteRow> {
-        let mut rows: Vec<_> = PALETTE_COMMANDS.iter().map(PaletteRow::from_static).collect();
+    fn all_rows(cx: &App) -> Vec<PaletteRow> {
+        let mut rows: Vec<_> = PALETTE_COMMANDS
+            .iter()
+            .filter(|c| !c.id.starts_with("workspace:"))
+            .map(PaletteRow::from_static)
+            .collect();
         for profile in crate::mux_host::spawnable_domain_profiles() {
             rows.push(PaletteRow {
                 id: format!("domain:{}", profile.id),
@@ -125,18 +133,48 @@ impl CommandPalette {
                 wired: true,
             });
         }
+        // wezterm-gui expanded_commands: Switch to each other workspace,
+        // then Create new Workspace. Keep next/previous as extras.
+        let current = crate::workspaces::current_view(cx)
+            .unwrap_or_else(crate::mux_host::active_workspace);
+        let mut names = crate::workspaces::known_names(cx);
+        if names.is_empty() {
+            names = crate::mux_host::workspace_names();
+        }
+        for name in names {
+            if name == current {
+                continue;
+            }
+            rows.push(PaletteRow {
+                id: format!("workspace:switch:{name}"),
+                brief: format!("Switch to workspace {name}"),
+                doc: String::new(),
+                menubar: "Window | Workspace".into(),
+                keys: String::new(),
+                wired: true,
+            });
+        }
+        for cmd in PALETTE_COMMANDS
+            .iter()
+            .filter(|c| c.id.starts_with("workspace:"))
+        {
+            rows.push(PaletteRow::from_static(cmd));
+        }
         rows
     }
 
     fn filtered(&self, cx: &App) -> Vec<PaletteRow> {
         let q = self.query.read(cx).value().to_lowercase();
-        Self::all_rows()
+        Self::all_rows(cx)
             .into_iter()
             .filter(|cmd| q.is_empty() || cmd.haystack().to_lowercase().contains(&q))
             .collect()
     }
 
     fn run(&mut self, cmd: &PaletteRow, _window: &mut Window, cx: &mut Context<Self>) {
+        if !self.armed {
+            return;
+        }
         if !cmd.wired {
             self.last_ran = Some(format!("Not yet implemented: {}", cmd.brief));
             println!(
@@ -146,6 +184,7 @@ impl CommandPalette {
             cx.notify();
             return;
         }
+        self.armed = false;
         self.last_ran = Some(cmd.brief.clone());
         println!("wezterm-gpui palette: {} ({})", cmd.id, cmd.brief);
         cx.emit(PaletteEvent::Executed(cmd.id.clone()));

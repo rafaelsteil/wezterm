@@ -14,6 +14,9 @@ use gpui_component::{
     notification::Notification,
     tab::{Tab, TabBar},
 };
+use mux::Mux;
+use mux::tab::TabId;
+use mux::window::WindowId as MuxWindowId;
 use portable_pty::CommandBuilder;
 
 use crate::confirm::{open_confirm, open_line_prompt};
@@ -78,6 +81,8 @@ struct ShellTab {
     layout: SplitLayout<Entity<TermPane>>,
     /// One gpui-component divider state per split node (AdjustPaneSize).
     split_states: HashMap<u64, Entity<ResizableState>>,
+    /// Mux tab for the Domain::spawn leaf. Split siblings stay orphan panes (040).
+    mux_tab: Option<TabId>,
 }
 
 impl ShellTab {
@@ -161,6 +166,11 @@ pub struct AppShell {
     /// Launch content size; ResetFontAndWindowSize restores this (047).
     original_size: Size<Pixels>,
     window_level: WindowZOrder,
+    mux_window_id: MuxWindowId,
+    /// Mux workspace tag for this HWND (not the client-wide active name).
+    workspace: String,
+    /// HWND hidden because this mux window is not in the active workspace.
+    workspace_hidden: bool,
 }
 
 impl Focusable for AppShell {
@@ -185,7 +195,10 @@ impl AppShell {
                 PaletteEvent::Executed(id) => {
                     this.palette_open = false;
                     this.apply_command(&id, window, cx);
-                    if !this.palette_open && !window.has_active_dialog(cx) {
+                    if !this.workspace_hidden
+                        && !this.palette_open
+                        && !window.has_active_dialog(cx)
+                    {
                         this.focus_terminal(window, cx);
                     }
                 }
@@ -204,7 +217,10 @@ impl AppShell {
                 PickerEvent::Confirmed(id) => {
                     let kind = this.picker_kind.take();
                     this.apply_picker(kind, id.clone(), window, cx);
-                    if this.picker_kind.is_none() && !this.palette_open {
+                    if this.picker_kind.is_none()
+                        && !this.palette_open
+                        && !this.workspace_hidden
+                    {
                         this.request_terminal_focus(window, cx);
                     }
                 }
@@ -223,14 +239,21 @@ impl AppShell {
         window.focus(&focus_handle, cx);
         window.activate_window();
         let default = shells.first().cloned().unwrap_or_else(crate::shells::default_shell);
+        let mux_window_id = crate::mux_host::new_mux_window().unwrap_or_else(|err| {
+            eprintln!("wezterm-gpui mux window: {err:#}");
+            0
+        });
+        let workspace = crate::mux_host::workspace_of(mux_window_id)
+            .unwrap_or_else(crate::mux_host::active_workspace);
         let first = if let Some(pane) = initial {
             ShellTab {
                 title_override: None,
                 layout: SplitLayout::leaf(pane),
                 split_states: HashMap::new(),
+                mux_tab: None,
             }
         } else {
-            Self::new_tab(font_px, focus_handle.clone(), &default, cx)
+            Self::new_tab(font_px, focus_handle.clone(), &default, mux_window_id, cx)
         };
         let first_term = first.layout.active_pane().cloned();
         let mut this = Self {
@@ -254,14 +277,32 @@ impl AppShell {
             next_split_id: 1,
             original_size: launch_content_size(window),
             window_level: WindowZOrder::Normal,
+            mux_window_id,
+            workspace,
+            workspace_hidden: false,
         };
         if let Some(term) = first_term {
             this.watch_pane(term, window, cx);
         }
+        // OS caption X / Alt+F4 posts WM_CLOSE. Default GPUI then
+        // DestroyWindow without close_self_or_quit, so a hidden workspace
+        // HWND stays and the process is a ghost. Intercept like Zed.
+        let shell = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |window, cx| {
+            shell
+                .update(cx, |this, cx| {
+                    this.confirm_close_window(window, cx);
+                    false
+                })
+                .unwrap_or(true)
+        });
         this
     }
 
     pub fn focus_terminal(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace_hidden {
+            return;
+        }
         window.focus(&self.focus_handle, cx);
         window.activate_window();
     }
@@ -309,6 +350,22 @@ impl AppShell {
     fn apply_command(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(name) = id.strip_prefix("domain:") {
             self.spawn_named_domain(name, window, cx);
+            return;
+        }
+        if id == "workspace:create" {
+            self.create_workspace(window, cx);
+            return;
+        }
+        if let Some(name) = id.strip_prefix("workspace:switch:") {
+            self.switch_workspace(name, window, cx);
+            return;
+        }
+        if id == "workspace:relative:1" {
+            self.switch_workspace_relative(1, window, cx);
+            return;
+        }
+        if id == "workspace:relative:-1" {
+            self.switch_workspace_relative(-1, window, cx);
             return;
         }
         match id {
@@ -401,7 +458,9 @@ impl AppShell {
             }
             "ActivateCommandPalette" => self.open_palette(window, cx),
             "ReloadConfiguration" => self.reload_configuration(window, cx),
-            "SpawnWindow" => self.spawn_window(window, cx),
+            "SpawnWindow" => {
+                self.spawn_window(window, cx);
+            }
             "DetachDomain.CurrentPaneDomain" => {
                 window.push_notification(
                     Notification::info("The local domain cannot be detached"),
@@ -509,13 +568,35 @@ impl AppShell {
         font_px: f32,
         shell_focus: FocusHandle,
         profile: &ShellProfile,
+        mux_window: MuxWindowId,
         cx: &mut Context<Self>,
     ) -> ShellTab {
-        let term = cx.new(|cx| TermPane::spawn(font_px, shell_focus, profile, cx));
-        ShellTab {
-            title_override: None,
-            layout: SplitLayout::leaf(term),
-            split_states: HashMap::new(),
+        match crate::mux_host::spawn_tab_in_window(
+            mux_window,
+            profile.domain.as_deref(),
+            profile.command(),
+        ) {
+            Ok((tab_id, pane)) => {
+                let term = cx.new(|cx| {
+                    TermPane::from_pane(font_px, shell_focus, profile, pane, cx)
+                });
+                ShellTab {
+                    title_override: None,
+                    layout: SplitLayout::leaf(term),
+                    split_states: HashMap::new(),
+                    mux_tab: Some(tab_id),
+                }
+            }
+            Err(err) => {
+                eprintln!("wezterm-gpui Domain::spawn: {err:#}");
+                let term = cx.new(|cx| TermPane::spawn(font_px, shell_focus, profile, cx));
+                ShellTab {
+                    title_override: None,
+                    layout: SplitLayout::leaf(term),
+                    split_states: HashMap::new(),
+                    mux_tab: None,
+                }
+            }
         }
     }
 
@@ -534,6 +615,7 @@ impl AppShell {
             self.font_px,
             self.focus_handle.clone(),
             profile,
+            self.mux_window_id,
             cx,
         );
         let term = tab.layout.active_pane().cloned();
@@ -630,8 +712,8 @@ impl AppShell {
         };
         let empty = tab.layout.remove_pane(&pane);
         tab.retain_split_states();
-        if empty && self.remove_tab_at(tab_index) {
-            close_this_window_or_quit(window, cx);
+        if empty && self.remove_tab_at(tab_index, cx, true) {
+            self.close_self_or_quit(window, cx);
             return;
         }
         self.sync_pane_focus(cx);
@@ -678,17 +760,36 @@ impl AppShell {
         crate::win_zorder::apply(window, level);
     }
 
-    fn close_tab_at(&mut self, index: usize) {
+    fn close_tab_at(&mut self, index: usize, cx: &App) {
         if self.tabs.len() <= 1 || index >= self.tabs.len() {
             return;
         }
-        let _ = self.remove_tab_at(index);
+        let _ = self.remove_tab_at(index, cx, true);
+    }
+
+    fn release_tab_mux(tab: &ShellTab, cx: &App) {
+        let Some(mux) = Mux::try_get() else {
+            return;
+        };
+        if let Some(id) = tab.mux_tab {
+            mux.remove_tab(id);
+        }
+        for pane in tab.layout.panes() {
+            if let Some(pid) = pane.read(cx).pane_id() {
+                mux.remove_pane(pid);
+            }
+        }
     }
 
     /// Remove `index`. `true` if that was the last tab (caller should quit).
-    fn remove_tab_at(&mut self, index: usize) -> bool {
+    fn remove_tab_at(&mut self, index: usize, cx: &App, kill_mux: bool) -> bool {
         if index >= self.tabs.len() {
             return self.tabs.is_empty();
+        }
+        if kill_mux {
+            if let Some(tab) = self.tabs.get(index) {
+                Self::release_tab_mux(tab, cx);
+            }
         }
         if self.tabs.len() <= 1 {
             self.tabs.clear();
@@ -735,7 +836,7 @@ impl AppShell {
         }
         let skip = self.tabs[index].can_close_without_prompting(mux::pane::CloseReason::Tab, cx);
         if !wants_tab_close_prompt(skip) {
-            self.close_tab_at(index);
+            self.close_tab_at(index, cx);
             self.request_terminal_focus(window, cx);
             cx.notify();
             return;
@@ -754,7 +855,7 @@ impl AppShell {
             true,
             move |window, cx| {
                 shell.update(cx, |this, cx| {
-                    this.close_tab_at(index);
+                    this.close_tab_at(index, cx);
                     this.request_terminal_focus(window, cx);
                     cx.notify();
                 });
@@ -978,6 +1079,22 @@ impl AppShell {
             title: "New Window".into(),
             subtitle: "Spawn".into(),
         });
+        let current = self.workspace.clone();
+        for name in crate::workspaces::known_names(cx) {
+            if name == current {
+                continue;
+            }
+            items.push(PickerItem {
+                id: format!("workspace:switch:{name}"),
+                title: format!("Switch to workspace: `{name}`"),
+                subtitle: "Window | Workspace".into(),
+            });
+        }
+        items.push(PickerItem {
+            id: "workspace:create".into(),
+            title: "Create new Workspace".into(),
+            subtitle: format!("current is `{current}`"),
+        });
         items.push(PickerItem {
             id: "launch:splith".into(),
             title: "Split Horizontally".into(),
@@ -1148,6 +1265,10 @@ impl AppShell {
     }
 
     fn apply_launcher_id(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if id.starts_with("workspace:") {
+            self.apply_command(id, window, cx);
+            return;
+        }
         if let Some(name) = id.strip_prefix("domain:") {
             self.spawn_named_domain(name, window, cx);
             return;
@@ -1260,12 +1381,13 @@ impl AppShell {
             return;
         };
         if empty {
-            let _ = self.remove_tab_at(tab_index);
+            let _ = self.remove_tab_at(tab_index, cx, false);
         }
         let tab = ShellTab {
             title_override: None,
             layout: SplitLayout::leaf(pane.clone()),
             split_states: HashMap::new(),
+            mux_tab: None,
         };
         self.tabs.push(tab);
         self.last_active = Some(self.active.min(self.tabs.len().saturating_sub(1)));
@@ -1298,7 +1420,7 @@ impl AppShell {
             return;
         };
         if empty {
-            let _ = self.remove_tab_at(tab_index);
+            let _ = self.remove_tab_at(tab_index, cx, false);
         }
         let opts = app_window_options_offset(window, cx);
         if let Ok(handle) = cx.open_window(opts, move |window, cx| {
@@ -1313,15 +1435,88 @@ impl AppShell {
         cx.notify();
     }
 
-    fn spawn_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn spawn_window(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let opts = app_window_options_offset(window, cx);
-        if let Ok(handle) = cx.open_window(opts, |window, cx| {
-            let view = cx.new(|cx| AppShell::new(window, cx));
-            let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
-            view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
-            root
-        }) {
+        if let Ok(handle) = open_app_shell(opts, cx) {
             focus_opened_window(handle, cx);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn create_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace_hidden {
+            return;
+        }
+        if !crate::workspaces::try_begin_spawn() {
+            return;
+        }
+        let previous = self.workspace.clone();
+        let name = crate::mux_host::generate_workspace_name();
+        crate::mux_host::set_active_workspace(&name);
+        self.hide_then_spawn_workspace_window(previous, window, cx);
+    }
+
+    fn hide_then_spawn_workspace_window(
+        &mut self,
+        previous: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.workspace_hidden = true;
+        crate::win_zorder::set_hidden(window, true);
+        crate::workspaces::hide_all(cx);
+        let opts = app_window_options_offset(window, cx);
+        cx.spawn(async move |this, cx| {
+            let _spawn = crate::workspaces::SpawnGuard;
+            let ok = cx.update(|cx| open_app_shell(opts, cx).is_ok());
+            if !ok {
+                this.update_in(cx, |this, window, cx| {
+                    crate::mux_host::set_active_workspace(&previous);
+                    this.workspace_hidden = false;
+                    crate::win_zorder::set_hidden(window, false);
+                    crate::workspaces::show_workspace(&previous, cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    fn switch_workspace(&mut self, name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace_hidden && self.workspace != name {
+            return;
+        }
+        crate::mux_host::set_active_workspace(name);
+        if crate::workspaces::has_workspace(name, cx) {
+            self.workspace_hidden = self.workspace != name;
+            crate::workspaces::show_workspace(name, cx);
+        } else if self.workspace_hidden || !crate::workspaces::try_begin_spawn() {
+            return;
+        } else {
+            self.hide_then_spawn_workspace_window(self.workspace.clone(), window, cx);
+        }
+    }
+
+    fn switch_workspace_relative(
+        &mut self,
+        delta: isize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let names = crate::workspaces::known_names(cx);
+        if names.len() < 2 {
+            return;
+        }
+        let current = self.workspace.clone();
+        let idx = names.iter().position(|w| *w == current).unwrap_or(0);
+        let n = names.len() as isize;
+        let new_idx = (idx as isize + delta).rem_euclid(n) as usize;
+        if let Some(w) = names.get(new_idx) {
+            if w != &current {
+                self.switch_workspace(w, window, cx);
+            }
         }
     }
 
@@ -1716,8 +1911,8 @@ impl AppShell {
         };
         let empty = tab.layout.remove_pane(&pane);
         tab.retain_split_states();
-        if empty && self.remove_tab_at(tab_index) {
-            close_this_window_or_quit(window, cx);
+        if empty && self.remove_tab_at(tab_index, cx, true) {
+            self.close_self_or_quit(window, cx);
             return;
         }
         self.sync_pane_focus(cx);
@@ -1727,6 +1922,29 @@ impl AppShell {
 
     /// Last tab of this HWND. Other windows stay up (052). Last HWND still
     /// quits, same as wezterm-gui `quit_when_all_windows_are_closed`.
+    /// If this was the last HWND in the workspace, switch to another
+    /// workspace that still has mux windows (055).
+    fn close_self_or_quit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mux_window = self.mux_window_id;
+        let workspace = self.workspace.clone();
+        for tab in &self.tabs {
+            Self::release_tab_mux(tab, cx);
+        }
+        self.tabs.clear();
+        crate::workspaces::unregister(mux_window, cx);
+        crate::mux_host::kill_mux_window(mux_window);
+        let others = crate::workspaces::remaining(cx);
+        if let Some((fallback, _)) = others.iter().find(|(w, _)| w != &workspace) {
+            crate::mux_host::set_active_workspace(fallback);
+            crate::workspaces::show_workspace(fallback, cx);
+            window.remove_window();
+        } else if others.iter().any(|(w, _)| w == &workspace) {
+            close_this_window_or_quit(window, cx);
+        } else {
+            cx.quit();
+        }
+    }
+
     fn confirm_close_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let policy = config::configuration().window_close_confirmation;
         let all_skip = self
@@ -1734,10 +1952,10 @@ impl AppShell {
             .iter()
             .all(|t| t.can_close_without_prompting(mux::pane::CloseReason::Window, cx));
         if !wants_quit_prompt(policy, all_skip) {
-            close_this_window_or_quit(window, cx);
+            self.close_self_or_quit(window, cx);
             return;
         }
-        let last_hwnd = cx.windows().len() <= 1;
+        let last_hwnd = crate::workspaces::is_last_hwnd(window, cx);
         let (title, message, button) = if last_hwnd {
             ("Quit WezTerm?", "🛑 Really Quit WezTerm?", "Quit")
         } else {
@@ -1748,7 +1966,8 @@ impl AppShell {
             )
         };
         self.focus_terminal(window, cx);
-        let restore = Self::dialog_restore(cx.entity());
+        let shell = cx.entity();
+        let restore = Self::dialog_restore(shell.clone());
         open_confirm(
             window,
             cx,
@@ -1756,7 +1975,11 @@ impl AppShell {
             message,
             button,
             true,
-            |window, cx| close_this_window_or_quit(window, cx),
+            move |window, cx| {
+                shell.update(cx, |this, cx| {
+                    this.close_self_or_quit(window, cx);
+                });
+            },
             restore,
         );
     }
@@ -2051,7 +2274,24 @@ impl AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.focus_pending && !self.overlay_open() && !window.has_active_dialog(cx) {
+        crate::workspaces::touch(window, self.mux_window_id, &self.workspace, cx);
+        let active_ws = crate::mux_host::active_workspace();
+        if self.workspace != active_ws {
+            crate::win_zorder::set_hidden(window, true);
+            self.workspace_hidden = true;
+        } else if self.workspace_hidden {
+            self.workspace_hidden = false;
+            self.request_terminal_focus(window, cx);
+        }
+        if !self.workspace_hidden {
+            crate::workspaces::set_current_view(&self.workspace, cx);
+        }
+        let workspace = self.workspace.clone();
+        if self.focus_pending
+            && !self.workspace_hidden
+            && !self.overlay_open()
+            && !window.has_active_dialog(cx)
+        {
             self.focus_terminal(window, cx);
             self.focus_pending = false;
         }
@@ -2180,7 +2420,7 @@ impl Render for AppShell {
                         .items_center()
                         .gap_2()
                         .child(
-                            Label::new("WezTerm GPUI")
+                            Label::new(format!("WezTerm GPUI · {workspace}"))
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_size(px(13.)),
                         )
@@ -2290,7 +2530,7 @@ impl Render for AppShell {
                     .border_color(cx.theme().border)
                     .child(
                         Label::new(format!(
-                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F search  ·  {}  ·  {}  ·  {}  ·  mux LocalDomain",
+                            "Ctrl+Shift+P palette  ·  Ctrl+Shift+C/V copy/paste  ·  Ctrl+Shift+F search  ·  {}  ·  {}  ·  {}  ·  ws `{workspace}`  ·  mux LocalDomain",
                             crate::mux_host::config_status(),
                             status_title,
                             status_line
@@ -2431,6 +2671,19 @@ fn focus_opened_window(handle: WindowHandle<Root>, cx: &mut Context<AppShell>) {
         });
     })
     .detach();
+}
+
+fn open_app_shell(
+    opts: WindowOptions,
+    cx: &mut App,
+) -> Result<WindowHandle<Root>, anyhow::Error> {
+    cx.open_window(opts, |window, cx| {
+        let view = cx.new(|cx| AppShell::new(window, cx));
+        let root = cx.new(|cx| Root::new(view.clone(), window, cx).bg(cx.theme().background));
+        view.update(cx, |shell, cx| shell.focus_terminal(window, cx));
+        root
+    })
+    .map_err(|err| anyhow::anyhow!("{err:?}"))
 }
 
 fn app_window_options_at(bounds: Option<Bounds<Pixels>>, cx: &App) -> WindowOptions {

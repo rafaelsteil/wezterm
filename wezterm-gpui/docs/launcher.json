@@ -1,16 +1,16 @@
 {
   "id": "wezterm-gpui-launcher",
   "schema_version": 1,
-  "updated": "2026-08-28T18:20:00Z",
+  "updated": "2026-08-28T23:55:00Z",
   "legacy": "wezterm-gui/src/overlay/launcher.rs. Trigger: right-click tab-bar Plus (mouseevent do_new_tab_button_click → ShowLauncher). Also ShowLauncher / ShowLauncherArgs / ShowTabNavigator key assignments.",
   "gpui": "049 searchable Picker (not a termwiz clone). 027 chevron is still the new-tab menu. ShowLauncher / ShowTabNavigator Wired in the palette. Unique ops tracked here; COMMANDS+KEY_ASSIGNMENTS overlap docs/command-palette.json.",
   "note": "Per-operation tracker for the wezterm-gui Launcher. STATE.json points here. Append; never delete rows. gpui: wired | listed | needs_mux | needs_gpui | parked | n_a. kind: call_core | gpui_window | gpui_ui | dynamic. user_try: ok | not_tested | n_a. Recommendation: do not clone the overlay. Domain/workspace/launch_menu are mux calls; the rest is a second dump of the palette.",
   "stats": {
     "sources": 6,
-    "unique_ops": 12,
+    "unique_ops": 13,
     "overlap_palette": true
   },
-  "recommendation": "Do not recreate the 80-item termwiz list. 053 exposes WSL/exec domain spawn on the chevron, ShowLauncher, and palette. Unix attach and workspaces stay out. COMMANDS and KEY_ASSIGNMENTS stay on the command palette.",
+  "recommendation": "Do not recreate the 80-item termwiz list. 053 exposes WSL/exec domain spawn. 055 wires workspaces (create/switch, hide/show HWNDs). Unix attach stays out. COMMANDS and KEY_ASSIGNMENTS stay on the command palette.",
   "how_wezterm_builds_it": {
     "trigger": "Right-click Plus on the tab bar; ShowLauncher; ShowLauncherArgs; ShowTabNavigator uses TABS only",
     "default_flags": [
@@ -44,8 +44,8 @@
       "id": "WORKSPACES",
       "kind": "dynamic",
       "core": "mux.iter_workspaces + SwitchToWorkspace { name: None } to create",
-      "gpui": "needs_mux",
-      "notes": "Screenshot: Create new Workspace (current is `default`). POC has no workspace UI."
+      "gpui": "wired",
+      "notes": "055: Create new Workspace + Switch to workspace `name` on ShowLauncher and the command palette. Hide/show HWNDs; no name prompt. Unix attach still out."
     },
     {
       "id": "TABS",
@@ -106,9 +106,19 @@
       "action": "SwitchToWorkspace { name: None, spawn: None }",
       "kind": "call_core",
       "core": "mux workspace create + switch",
-      "gpui": "needs_mux",
+      "gpui": "wired",
       "user_try": "not_tested",
-      "notes": "Optional GPUI prompt for the workspace name (wezterm-gui may prompt). Mux owns the list."
+      "notes": "055: generate_workspace_name (no prompt), set_active_workspace, hide other HWNDs, spawn one HWND. Needs user-try."
+    },
+    {
+      "id": "SwitchToWorkspace.switch",
+      "brief": "Switch to workspace `{name}`",
+      "action": "SwitchToWorkspace { name: Some(name), spawn: None }",
+      "kind": "call_core",
+      "core": "mux.set_active_workspace + show matching HWNDs",
+      "gpui": "wired",
+      "user_try": "not_tested",
+      "notes": "055: ShowWindow SW_HIDE/SW_SHOW. Does not destroy AppShell (SplitLayout stays). Empty workspace spawns a new HWND."
     },
     {
       "id": "ReloadConfiguration",

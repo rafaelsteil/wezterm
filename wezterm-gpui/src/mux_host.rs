@@ -16,8 +16,11 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::Context as _;
 use mux::Mux;
+use mux::client::ClientId;
 use mux::domain::{Domain, DomainState, LocalDomain};
 use mux::pane::Pane;
+use mux::tab::TabId;
+use mux::window::WindowId as MuxWindowId;
 use portable_pty::CommandBuilder;
 use wezterm_term::TerminalSize;
 
@@ -121,6 +124,15 @@ fn init_inner() -> anyhow::Result<()> {
     let domain: Arc<dyn Domain> = Arc::new(LocalDomain::new("local").context("LocalDomain::new")?);
     let mux = Arc::new(Mux::new(Some(Arc::clone(&domain))));
     Mux::set_mux(&mux);
+    let client_id = Arc::new(ClientId::new());
+    mux.register_client(client_id.clone());
+    mux.replace_identity(Some(client_id));
+    let workspace = config::configuration()
+        .default_workspace
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| mux::DEFAULT_WORKSPACE.to_string());
+    mux.set_active_workspace(&workspace);
     register_configured_domains();
     Ok(())
 }
@@ -218,4 +230,90 @@ pub fn spawn_in_domain(
 #[allow(dead_code)]
 pub fn spawn_command(size: TerminalSize, cmd: CommandBuilder) -> anyhow::Result<Arc<dyn Pane>> {
     spawn_in_domain(size, None, Some(cmd))
+}
+
+fn default_spawn_size() -> TerminalSize {
+    TerminalSize {
+        rows: 24,
+        cols: 80,
+        pixel_width: 80 * 8,
+        pixel_height: 24 * 16,
+        dpi: 96,
+    }
+}
+
+/// Empty MuxWindow tagged with the active workspace. One per GPUI HWND.
+pub fn new_mux_window() -> anyhow::Result<MuxWindowId> {
+    ensure_init()?;
+    let mux = Mux::get();
+    let workspace = mux.active_workspace();
+    let builder = mux.new_empty_window(Some(workspace), None);
+    Ok(*builder)
+}
+
+/// `Domain::spawn` into `window_id`: mux Tab + pane (wezterm-gui new-tab path).
+pub fn spawn_tab_in_window(
+    window_id: MuxWindowId,
+    domain: Option<&str>,
+    cmd: Option<CommandBuilder>,
+) -> anyhow::Result<(TabId, Arc<dyn Pane>)> {
+    ensure_init()?;
+    let mux = Mux::get();
+    let host = match domain {
+        Some(name) => mux
+            .get_domain_by_name(name)
+            .with_context(|| format!("mux domain `{name}` is not registered"))?,
+        None => mux.default_domain(),
+    };
+    let tab = promise::spawn::block_on(host.spawn(default_spawn_size(), cmd, None, window_id))
+        .with_context(|| {
+            format!(
+                "{}::spawn into mux window {window_id}",
+                domain.unwrap_or_else(|| host.domain_name())
+            )
+        })?;
+    let pane = tab
+        .get_active_pane()
+        .ok_or_else(|| anyhow::anyhow!("spawned mux tab has no pane"))?;
+    Ok((tab.tab_id(), pane))
+}
+
+pub fn kill_mux_window(window_id: MuxWindowId) {
+    if let Some(mux) = Mux::try_get() {
+        mux.kill_window(window_id);
+    }
+}
+
+pub fn active_workspace() -> String {
+    let _ = ensure_init();
+    Mux::try_get()
+        .map(|m| m.active_workspace())
+        .unwrap_or_else(|| mux::DEFAULT_WORKSPACE.to_string())
+}
+
+pub fn set_active_workspace(name: &str) {
+    let _ = ensure_init();
+    if let Some(mux) = Mux::try_get() {
+        mux.set_active_workspace(name);
+    }
+}
+
+pub fn generate_workspace_name() -> String {
+    let _ = ensure_init();
+    Mux::try_get()
+        .map(|m| m.generate_workspace_name())
+        .unwrap_or_else(|| mux::DEFAULT_WORKSPACE.to_string())
+}
+
+pub fn workspace_of(window_id: MuxWindowId) -> Option<String> {
+    Mux::try_get()?
+        .get_window(window_id)
+        .map(|w| w.get_workspace().to_string())
+}
+
+pub fn workspace_names() -> Vec<String> {
+    let _ = ensure_init();
+    Mux::try_get()
+        .map(|m| m.iter_workspaces())
+        .unwrap_or_default()
 }

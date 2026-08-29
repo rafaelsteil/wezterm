@@ -1,0 +1,7 @@
+{
+  "id": "055-mux-workspaces",
+  "at": "2026-08-28T23:55:00Z",
+  "decision": "hwnd_is_mux_window_workspace_hides_hwnds_keep_split_layout",
+  "rationale": "User asked for workspaces. Mux owns the session tree and workspace tags; HWND is a view of one MuxWindow. New tabs use Domain::spawn so they sit on a mux Tab. Extra split leaves stay GPUI SplitLayout (040). Switch hides/shows HWNDs (Win32 ShowWindow) instead of destroying AppShell. Create uses generate_workspace_name with no prompt. Last HWND of a workspace falls back to another workspace if any remain. Do not start unix Attach, Mux::split_pane rewrite, 026/031, or window/ cutover.",
+  "record": "docs/plans/055-mux-workspaces.md"
+}

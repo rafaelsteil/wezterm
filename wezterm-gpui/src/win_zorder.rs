@@ -54,6 +54,43 @@ pub fn bring_to_front(window: &Window) {
     let _ = window;
 }
 
+/// Hide (workspace switch) without destroying the GPUI tree / mux window.
+pub fn set_hidden(window: &Window, hidden: bool) {
+    #[cfg(windows)]
+    windows::set_hidden(window, hidden);
+    #[cfg(not(windows))]
+    {
+        if hidden {
+            window.minimize_window();
+        } else {
+            window.activate_window();
+        }
+    }
+}
+
+/// Win32 HWND as `isize` (0 if unknown / not Windows).
+pub fn raw_hwnd(window: &Window) -> Option<isize> {
+    #[cfg(windows)]
+    {
+        windows::raw_hwnd(window)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window;
+        None
+    }
+}
+
+/// `ShowWindow` without a GPUI `Window` (nested `handle.update` is a no-op).
+pub fn set_hidden_raw(hwnd: isize, hidden: bool) {
+    #[cfg(windows)]
+    windows::set_hidden_hwnd(hwnd, hidden);
+    #[cfg(not(windows))]
+    {
+        let _ = (hwnd, hidden);
+    }
+}
+
 /// Top-left of visible top-level windows, in screen pixels (Win32 `GetWindowRect`).
 pub fn visible_hwnd_origins() -> Vec<(i32, i32)> {
     #[cfg(windows)]
@@ -95,7 +132,6 @@ mod windows {
     const SWP_NOSIZE: u32 = 0x0001;
     const SWP_NOMOVE: u32 = 0x0002;
     const SWP_NOACTIVATE: u32 = 0x0010;
-    const SWP_SHOWWINDOW: u32 = 0x0040;
 
     #[repr(C)]
     struct WinRect {
@@ -116,9 +152,28 @@ mod windows {
             flags: u32,
         ) -> i32;
         fn SetForegroundWindow(hwnd: Hwnd) -> i32;
+        fn BringWindowToTop(hwnd: Hwnd) -> i32;
+        fn AllowSetForegroundWindow(process_id: u32) -> i32;
         fn GetWindowRect(hwnd: Hwnd, rect: *mut WinRect) -> i32;
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
+        fn ShowWindow(hwnd: Hwnd, n_cmd_show: i32) -> i32;
         fn EnumWindows(cb: unsafe extern "system" fn(Hwnd, isize) -> i32, lparam: isize) -> i32;
+    }
+
+    const SW_HIDE: i32 = 0;
+    const SW_SHOW: i32 = 5;
+    const ASFW_ANY: u32 = 0xFFFFFFFF;
+
+    pub fn set_hidden(window: &Window, hidden: bool) {
+        let Some(hwnd) = hwnd_from_window(window) else {
+            return;
+        };
+        unsafe {
+            ShowWindow(hwnd, if hidden { SW_HIDE } else { SW_SHOW });
+        }
+        if !hidden {
+            bring_to_front(window);
+        }
     }
 
     pub fn apply(window: &Window, level: WindowZOrder) {
@@ -151,6 +206,9 @@ mod windows {
         let hwnd = win32.hwnd.get() as Hwnd;
         unsafe {
             SetForegroundWindow(hwnd);
+            BringWindowToTop(hwnd);
+            // No SWP_SHOWWINDOW: that flag un-hides a workspace HWND we
+            // just SW_HIDE'd (055 create was re-showing the source).
             SetWindowPos(
                 hwnd,
                 HWND_TOP as Hwnd,
@@ -158,8 +216,39 @@ mod windows {
                 0,
                 0,
                 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+                SWP_NOMOVE | SWP_NOSIZE,
             );
+        }
+    }
+
+    pub fn raw_hwnd(window: &Window) -> Option<isize> {
+        hwnd_from_window(window).map(|h| h as isize)
+    }
+
+    pub fn set_hidden_hwnd(hwnd: isize, hidden: bool) {
+        if hwnd == 0 {
+            return;
+        }
+        unsafe {
+            if hidden {
+                ShowWindow(hwnd as Hwnd, SW_HIDE);
+            } else {
+                // Caller must still own the foreground (show target before
+                // hiding the source) or SetForegroundWindow is ignored.
+                AllowSetForegroundWindow(ASFW_ANY);
+                ShowWindow(hwnd as Hwnd, SW_SHOW);
+                BringWindowToTop(hwnd as Hwnd);
+                SetForegroundWindow(hwnd as Hwnd);
+                SetWindowPos(
+                    hwnd as Hwnd,
+                    HWND_TOP as Hwnd,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE,
+                );
+            }
         }
     }
 

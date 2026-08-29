@@ -403,6 +403,33 @@ pub const PALETTE_COMMANDS: &[PaletteCommand] = &[
         Wired
     ),
     cmd!(
+        "workspace:create",
+        "Create new Workspace",
+        "Generate a workspace name, hide other windows, and spawn a new window",
+        "Window | Workspace",
+        "",
+        GpuiWindow,
+        Wired
+    ),
+    cmd!(
+        "workspace:relative:1",
+        "Switch to next workspace",
+        "Switch to the next workspace, ordered lexicographically by workspace name",
+        "Window | Workspace",
+        "",
+        GpuiWindow,
+        Wired
+    ),
+    cmd!(
+        "workspace:relative:-1",
+        "Switch to previous workspace",
+        "Switch to the previous workspace, ordered lexicographically by workspace name",
+        "Window | Workspace",
+        "",
+        GpuiWindow,
+        Wired
+    ),
+    cmd!(
         "Hide",
         "Hide/Minimize Window",
         "Hides/Mimimizes the current window",

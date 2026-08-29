@@ -139,55 +139,91 @@ impl TermPane {
             }
         };
         match spawn_live(&profile, cx) {
-            Ok(live) => Self {
-                live: Ok(live),
+            Ok(live) => Self::with_live(
+                Ok(live),
                 font_px,
                 painter,
-                pty_synced: false,
-                pty_cols: DEFAULT_COLS,
-                pty_rows: DEFAULT_ROWS,
-                viewport: None,
-                pty_commit_gen: 0,
-                paint_cache: None,
-                paint_scale: 1.0,
-                selection: Selection::default(),
                 shell_focus,
                 fallback_title,
                 profile,
-                focused: true,
-                last_mouse: None,
-                copy_mode: None,
-                search: None,
-                quick_select: None,
-                scroll_dragging: false,
-            },
-            Err(err) => Self {
-                live: Err(format!("{err:#}")),
+            ),
+            Err(err) => Self::with_live(
+                Err(format!("{err:#}")),
                 font_px,
                 painter,
-                pty_synced: false,
-                pty_cols: DEFAULT_COLS,
-                pty_rows: DEFAULT_ROWS,
-                viewport: None,
-                pty_commit_gen: 0,
-                paint_cache: None,
-                paint_scale: 1.0,
-                selection: Selection::default(),
                 shell_focus,
                 fallback_title,
                 profile,
-                focused: true,
-                last_mouse: None,
-                copy_mode: None,
-                search: None,
-                quick_select: None,
-                scroll_dragging: false,
-            },
+            ),
+        }
+    }
+
+    /// Attach an existing mux pane (tab spawned via `Domain::spawn`).
+    pub fn from_pane(
+        font_px: f32,
+        shell_focus: FocusHandle,
+        profile: &ShellProfile,
+        pane: Arc<dyn Pane>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let _ = crate::mux_host::ensure_init();
+        let fallback_title = profile.label.clone();
+        let profile = profile.clone();
+        let painter = match GlyphPainter::new(96) {
+            Ok(p) => Some(p),
+            Err(err) => {
+                eprintln!("wezterm-gpui wezterm-font init: {err:#}");
+                None
+            }
+        };
+        Self::with_live(
+            Ok(subscribe_pane(pane, cx)),
+            font_px,
+            painter,
+            shell_focus,
+            fallback_title,
+            profile,
+        )
+    }
+
+    fn with_live(
+        live: Result<LiveMux, String>,
+        font_px: f32,
+        painter: Option<GlyphPainter>,
+        shell_focus: FocusHandle,
+        fallback_title: String,
+        profile: ShellProfile,
+    ) -> Self {
+        Self {
+            live,
+            font_px,
+            painter,
+            pty_synced: false,
+            pty_cols: DEFAULT_COLS,
+            pty_rows: DEFAULT_ROWS,
+            viewport: None,
+            pty_commit_gen: 0,
+            paint_cache: None,
+            paint_scale: 1.0,
+            selection: Selection::default(),
+            shell_focus,
+            fallback_title,
+            profile,
+            focused: true,
+            last_mouse: None,
+            copy_mode: None,
+            search: None,
+            quick_select: None,
+            scroll_dragging: false,
         }
     }
 
     pub fn profile(&self) -> &ShellProfile {
         &self.profile
+    }
+
+    pub fn pane_id(&self) -> Option<PaneId> {
+        self.live.as_ref().ok().map(|live| live.pane.pane_id())
     }
 
     /// Returns true if the flag changed (caller should notify / drop paint cache).
@@ -1669,6 +1705,10 @@ fn spawn_live(
         profile.domain.as_deref(),
         profile.command(),
     )?;
+    Ok(subscribe_pane(pane, cx))
+}
+
+fn subscribe_pane(pane: Arc<dyn Pane>, cx: &mut Context<TermPane>) -> LiveMux {
     let pane_id = pane.pane_id();
     let alive = Arc::new(AtomicBool::new(true));
     let (tx, rx) = async_channel::unbounded::<()>();
@@ -1714,7 +1754,7 @@ fn spawn_live(
     })
     .detach();
 
-    Ok(LiveMux { pane, alive })
+    LiveMux { pane, alive }
 }
 
 fn notification_is_pane(n: &MuxNotification, pane_id: PaneId) -> bool {
