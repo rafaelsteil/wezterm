@@ -113,7 +113,7 @@ Workstream: `docs/reference/rendering-quality.md`. Lua matrix: `docs/lua-config.
 
 Reasonable continuations, smallest first:
 
-1. **055** user-try (retry): create a workspace, then close it with the OS **X** (and Alt+F4). Must show `default` (or quit if last) — same as `exit` on the last shell. No ghost `wezterm-gpui` process.
+1. **027** user-try (retry): chevron next to Plus — shell list must open **below** the button, not over the title bar.
 2. **054** user-try: type a partial command/path in cmd.exe (or WSL), press Tab — completion, not chrome focus. Shift+Tab if the shell uses it. Ctrl+Q dialog Tab still cycles buttons.
 3. **053** user-try: chevron a WSL distro; palette “New Tab (Domain WSL:…)”; ShowLauncher domain row. Plus / Ctrl+T still cmd.exe.
 4. **052** user-try if not done: two windows, `exit` in one (other HWND stays); Ctrl+Shift+F then Ctrl+Shift+C and palette Copy. **051** still: New Window cascade + focus, Pane Select badge. **050** still: Quick Select, scrollbar, Activate Window 2, Toggle FPS HUD. **048** resize pane + **039** skip-confirm still need a try if not done.

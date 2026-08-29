@@ -2476,7 +2476,7 @@ impl Render for AppShell {
                                             cx.notify();
                                         })),
                                 )
-                                .dropdown_menu_with_anchor(Anchor::BottomLeft, move |menu, _, _| {
+                                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
                                     let mut menu = menu;
                                     for profile in &shells {
                                         let profile = profile.clone();

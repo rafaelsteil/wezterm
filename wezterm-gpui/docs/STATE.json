@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-29T01:40:00Z",
+  "updated": "2026-08-29T02:05:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "055: mux workspaces. User: OS X on a workspace HWND does not show the previous workspace and leaves a ghost process (`exit` is fine). Retry after on_window_should_close → close_self_or_quit. 054/053/052/051/050/048/039 still need user-try if not done. Do not start unix Attach, 026/031. Do not start window/ cutover. Do not rewrite splits onto Mux::split_pane.",
+      "action": "027: new-tab chevron menu should open below the Plus (was BottomLeft → above). Retry after Anchor::TopRight. 055 OS X fallback user-ok. 054/053/052/051/050/048/039 still need user-try if not done. Do not start unix Attach, 026/031. Do not start window/ cutover. Do not rewrite splits onto Mux::split_pane.",
       "blocked_by": []
     },
     {
@@ -135,7 +135,7 @@
     {
       "id": "new-tab-shell-menu",
       "status": "done",
-      "notes": "027: Plus/Ctrl+T still Command Prompt. Chevron DropdownButton lists cmd + Windows PowerShell + pwsh if installed. **User-ok** 2026-08-27 (“works well”) after 028 icons."
+      "notes": "027: Plus/Ctrl+T still Command Prompt. Chevron DropdownButton lists cmd + Windows PowerShell + pwsh if installed. **User-ok** 2026-08-27 (“works well”) after 028 icons. User 2026-08-28: menu opened above the Plus; retry after Anchor::TopRight.",
     },
     {
       "id": "gpui-component-icon-assets",
@@ -1312,7 +1312,12 @@
     {
       "at": "2026-08-29T01:40:00Z",
       "id": "workspace_os_close_ghost",
-      "detail": "User after switch-focus: `exit` on the last shell of a workspace returns to the previous workspace; OS X (and Alt+F4) does not, and leaves a ghost/invisible process. Cause: caption close posts WM_CLOSE; GPUI DestroyWindow/remove_window never calls close_self_or_quit, so hidden HWNDs stay. Fix: Window::on_window_should_close → confirm_close_window (same fallback as exit)."
+      "detail": "User after switch-focus: `exit` on the last shell of a workspace returns to the previous workspace; OS X (and Alt+F4) does not, and leaves a ghost/invisible process. Cause: caption close posts WM_CLOSE; GPUI DestroyWindow/remove_window never calls close_self_or_quit, so hidden HWNDs stay. Fix: Window::on_window_should_close → confirm_close_window (same fallback as exit). User 2026-08-28: That's OK now."
+    },
+    {
+      "at": "2026-08-29T02:05:00Z",
+      "id": "new_tab_dropdown_opens_above",
+      "detail": "User: new-tab chevron PopupMenu opens on top of the Plus instead of below. Cause: dropdown_menu_with_anchor(Anchor::BottomLeft); gpui-component resolved_corner places Bottom* above the trigger. Fix: Anchor::TopRight (DropdownButton default and docs/story)."
     }
   ],
   "blockers": [],
