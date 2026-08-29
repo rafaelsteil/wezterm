@@ -23,4 +23,6 @@ Do **not** path-dep `wezterm-mux-server-impl` (unix/SSH/TLS clients). Stay parke
 
 Needs user-try: chevron WSL distro, palette “New Tab (Domain WSL:…)”, ShowLauncher domain row.
 
+**User-ok 2026-08-28.**
+
 Record: `docs/decisions/053-mux-wsl-domains.json`.

@@ -20,11 +20,11 @@ GPUI lists the Windows default catalog in `wezterm-gpui/src/commands.rs`. **Wire
 
 **047:** ToggleFullScreen, ResetFontAndWindowSize, AlwaysOnTop/Bottom/Normal. **User-ok.**
 
-**048:** AdjustPaneSize Left/Right/Up/Down on `ResizableState`. Needs user-try.
+**048:** AdjustPaneSize Left/Right/Up/Down on `ResizableState`. **User-ok.**
 
 **049:** remaining catalog (SpawnWindow, ActivateWindow, ReloadConfiguration, launcher/tab/pane/char/search/quickselect/debug pickers, copy mode, primary=clipboard). **Needs user-try.** No dimmed rows.
 
-**050:** Search / Quick Select / Pane Select match wezterm-gui (bottom search bar, in-pane labels, pane letter badges). Ctrl+Shift+F is Search. FPS HUD is palette **Toggle FPS HUD** only. 049 Picker path stays behind a flag. **Needs user-try.**
+**050:** Search / Quick Select / Pane Select match wezterm-gui (bottom search bar, in-pane labels, pane letter badges). Ctrl+Shift+F is Search. FPS HUD is palette **Toggle FPS HUD** only. 049 Picker path stays behind a flag. **User-ok.**
 
 ## Stats (2026-08-28)
 

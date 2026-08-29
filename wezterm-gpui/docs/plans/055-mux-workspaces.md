@@ -19,6 +19,6 @@ Do **not** teardown AppShell on switch (split geometry lives on the GPUI tree, n
 
 Surfaces: ShowLauncher + command palette `Create new Workspace` / `Switch to workspace \`name\`` / relative next/previous. Title bar and status show the active name.
 
-User 2026-08-28: OS X on a workspace HWND does not show the previous workspace and leaves a ghost process (`exit` is fine). Retry after `on_window_should_close` → `close_self_or_quit`.
+User 2026-08-28: OS X on a workspace HWND does not show the previous workspace and leaves a ghost process (`exit` is fine). Retry after `on_window_should_close` → `close_self_or_quit`. **User-ok.**
 
 Record: `docs/decisions/055-mux-workspaces.json`.

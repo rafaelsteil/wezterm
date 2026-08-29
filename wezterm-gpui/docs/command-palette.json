@@ -1,7 +1,7 @@
 {
   "id": "wezterm-gpui-command-palette",
   "schema_version": 1,
-  "updated": "2026-08-28T23:55:00Z",
+  "updated": "2026-08-29T02:55:00Z",
   "legacy": "wezterm-gui/src/commands.rs (CommandDef, compute_default_actions, derive_command_from_key_assignment) + termwindow/palette.rs build_commands. Execute: TermWindow::perform_key_assignment.",
   "gpui": "wezterm-gpui/src/commands.rs PALETTE_COMMANDS + palette.rs overlay (Ctrl+Shift+P). Dispatch by id; do not path-dep wezterm-gui.",
   "note": "Per-command tracker for the Ctrl+Shift+P palette. STATE.json points here. Append; never delete rows. gpui: wired | listed | call_core_ready | needs_gpui | needs_mux | n_a. kind: call_core | gpui_window | gpui_ui | open_url | input_map | dynamic. user_try: ok | not_tested | n_a. Static PALETTE_COMMANDS is fully Wired (049). 050 adds ToggleFpsHud POC extra and matches wezterm search/quickselect/paneselect UI. Dynamic mux/lua rows stay listed. Windows default list (compute_default_actions minus macOS HideApplication/QuitApplication). POC extras (Quit, Rename, Prompt, Confirm, ToggleFpsHud) are tagged poc_extra.",
@@ -46,7 +46,7 @@
     },
     {
       "id": "wsl_unix_domains",
-      "detail": "053: WSL/exec LocalDomain registered; palette/launcher/chevron New Tab (Domain WSL:*). Attach unix still needs wezterm-client. Workspaces still out.",
+      "detail": "053: WSL/exec LocalDomain registered; palette/launcher/chevron New Tab (Domain WSL:*). **User-ok** 2026-08-28. Attach unix still needs wezterm-client. Workspaces are 055 (user-ok).",
       "blocked_by": []
     },
     {
@@ -96,8 +96,8 @@
       "kind": "gpui_window",
       "core": "wezterm-gui spawn_command NewWindow",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "049: cx.open_window + AppShell::new. 050: origin +48px. 051: cascade until no visible HWND shares that top-left; new HWND is activated."
+      "user_try": "ok",
+      "notes": "049: cx.open_window + AppShell::new. 050: origin +48px. 051: cascade until no visible HWND shares that top-left; new HWND is activated. **User-ok** 2026-08-28."
     },
     {
       "id": "SplitVertical",
@@ -261,8 +261,8 @@
       "kind": "gpui_ui",
       "core": "none — termwiz QuickSelectOverlay labels on the pane",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "050: letter labels on visible regex matches (wezterm-gui overlay/quickselect.rs PATTERNS); type the label to copy. 049 Picker path behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT."
+      "user_try": "ok",
+      "notes": "050: letter labels on visible regex matches (wezterm-gui overlay/quickselect.rs PATTERNS); type the label to copy. 049 Picker path behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. **User-ok** 2026-08-28."
     },
     {
       "id": "CharSelect",
@@ -470,8 +470,8 @@
       "kind": "gpui_window",
       "core": "mux.generate_workspace_name + set_active_workspace",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "055: static catalog row (wezterm-gui expanded_commands). Hide other HWNDs, spawn one HWND. Needs user-try."
+      "user_try": "ok",
+      "notes": "055: static catalog row (wezterm-gui expanded_commands). Hide other HWNDs, spawn one HWND. **User-ok** 2026-08-28."
     },
     {
       "id": "workspace:relative:1",
@@ -481,8 +481,8 @@
       "kind": "gpui_window",
       "core": "mux.iter_workspaces wrap",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "055: static catalog. Needs user-try."
+      "user_try": "ok",
+      "notes": "055: static catalog. **User-ok** 2026-08-28."
     },
     {
       "id": "workspace:relative:-1",
@@ -492,8 +492,8 @@
       "kind": "gpui_window",
       "core": "mux.iter_workspaces wrap",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "055: static catalog. Needs user-try."
+      "user_try": "ok",
+      "notes": "055: static catalog. **User-ok** 2026-08-28."
     },
     {
       "id": "Hide",
@@ -514,8 +514,8 @@
       "kind": "gpui_ui",
       "core": "none — CopyOverlay editing_search + search_mode key table",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "050: vim-style bar at the bottom of the pane (Search: query (n/total matches. case-sensitive)); yellow current / pink other hits. Ctrl+Shift+F. Copy (palette / Ctrl+Shift+C) copies the current hit (051). 049 line Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Ctrl+R toggles case."
+      "user_try": "ok",
+      "notes": "050: vim-style bar at the bottom of the pane (Search: query (n/total matches. case-sensitive)); yellow current / pink other hits. Ctrl+Shift+F. Copy (palette / Ctrl+Shift+C) copies the current hit (051/052). 049 line Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Ctrl+R toggles case. **User-ok** 2026-08-28."
     },
     {
       "id": "PaneSelect.*",
@@ -525,8 +525,8 @@
       "kind": "gpui_ui",
       "core": "mux tab pane list; UI is box-model PaneSelector",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "050: centered letter badge on each GPUI split leaf (quick_select_alphabet). Activate / swap / keep-focus / move to new tab / new window. 049 Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Catalog ids: PaneSelect.Activate, .SwapWithActive, .SwapWithActiveKeepFocus, .MoveToNewTab, .MoveToNewWindow."
+      "user_try": "ok",
+      "notes": "050: centered letter badge on each GPUI split leaf (quick_select_alphabet). Activate / swap / keep-focus / move to new tab / new window. 049 Picker behind find::PICKER_SEARCH_QUICKSELECT_PANESELECT. Catalog ids: PaneSelect.Activate, .SwapWithActive, .SwapWithActiveKeepFocus, .MoveToNewTab, .MoveToNewWindow. **User-ok** 2026-08-28."
     },
     {
       "id": "RotatePanes.*",
@@ -558,8 +558,8 @@
       "kind": "gpui_window",
       "core": "none — wezterm-gui Connection window list",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "050: deferred activate_window + Win32 SetForegroundWindow (in-update WindowHandle::update was a no-op). Catalog ActivateWindow.0..9 + Relative ±1."
+      "user_try": "ok",
+      "notes": "050: deferred activate_window + Win32 SetForegroundWindow (in-update WindowHandle::update was a no-op). Catalog ActivateWindow.0..9 + Relative ±1. **User-ok** 2026-08-28."
     },
     {
       "id": "MoveTabRelative.*",
@@ -580,8 +580,8 @@
       "kind": "call_core",
       "core": "mux Tab::adjust_pane_size",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "048: ResizableState per split id; resize first child ± one cell. Catalog: AdjustPaneSize.Left/Right/Up/Down. Needs user-try."
+      "user_try": "ok",
+      "notes": "048: ResizableState per split id; resize first child ± one cell. Catalog: AdjustPaneSize.Left/Right/Up/Down. **User-ok** 2026-08-28."
     },
     {
       "id": "ActivatePaneDirection.*",
@@ -727,9 +727,9 @@
       "kind": "gpui_window",
       "core": "none — gpui-fps",
       "gpui": "wired",
-      "user_try": "not_tested",
+      "user_try": "ok",
       "poc_extra": true,
-      "notes": "050: palette only (019 Ctrl+Shift+F moved to Search). No shortcut."
+      "notes": "050: palette only (019 Ctrl+Shift+F moved to Search). No shortcut. **User-ok** 2026-08-28."
     },
     {
       "id": "dynamic.launch_menu",
@@ -750,8 +750,8 @@
       "kind": "dynamic",
       "core": "mux domain.spawn_pane",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "053: WSL/exec appear here. GPUI mux registers LocalDomain::new_wsl + exec_domains. Unix attach still out. See launcher.json."
+      "user_try": "ok",
+      "notes": "053: WSL/exec appear here. GPUI mux registers LocalDomain::new_wsl + exec_domains. Unix attach still out. See launcher.json. **User-ok** 2026-08-28."
     },
     {
       "id": "dynamic.AttachDomain",
@@ -772,8 +772,8 @@
       "kind": "dynamic",
       "core": "mux workspaces",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "055: named switches are still dynamic. Create / next / previous are static PALETTE_COMMANDS (`workspace:create`, `workspace:relative:±1`). Hide/show HWNDs; keep SplitLayout. Needs user-try."
+      "user_try": "ok",
+      "notes": "055: named switches are still dynamic. Create / next / previous are static PALETTE_COMMANDS (`workspace:create`, `workspace:relative:±1`). Hide/show HWNDs; keep SplitLayout. **User-ok** 2026-08-28."
     }
   ]
 }

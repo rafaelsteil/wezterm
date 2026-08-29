@@ -11,4 +11,6 @@ Stay parked: 026, 031, `window/` cutover, debug lua REPL.
 
 Needs user-try of the four items.
 
+**User-ok 2026-08-28.**
+
 Record: `docs/decisions/051-new-window-cascade-search-copy.json`.

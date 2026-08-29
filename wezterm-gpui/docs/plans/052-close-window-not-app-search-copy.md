@@ -9,4 +9,6 @@ Stay parked: 026, 031, `window/` cutover, debug lua REPL.
 
 Needs user-try: two windows, `exit` in one (other stays); Ctrl+Shift+F then Ctrl+Shift+C / palette Copy.
 
+**User-ok 2026-08-28.**
+
 Record: `docs/decisions/052-close-window-not-app-search-copy.json`.

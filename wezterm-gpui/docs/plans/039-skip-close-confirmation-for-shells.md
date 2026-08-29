@@ -16,3 +16,5 @@ Dialog stays for a stateful process (vim, ssh, …) and for lua `window_close_co
 - Ctrl+Q / last-tab X: `NeverPrompt` → quit; `AlwaysPrompt` → prompt only if some pane is stateful.
 
 Record: `docs/decisions/039-skip-close-confirmation-for-shells.json`.
+
+**User-ok 2026-08-28.**

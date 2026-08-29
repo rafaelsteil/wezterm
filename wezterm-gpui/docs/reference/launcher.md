@@ -21,9 +21,9 @@ GPUI already has the 027 Plus+chevron (cmd / PowerShell / **053 WSL**). **049:**
 | Row | Kind | GPUI |
 |---|---|---|
 | New Tab (domain `local`) | `call_core` | Wired as Plus / palette New Tab |
-| New Tab (domain `WSL:…`) | `call_core` | **053 wired** — `LocalDomain::new_wsl`; needs user-try |
+| New Tab (domain `WSL:…`) | `call_core` | **053 user-ok** — `LocalDomain::new_wsl` |
 | Attach domain `unix` | `call_core` | `needs_mux` — Unix domain |
-| Create new Workspace | `call_core` | **055 wired** — hide/show HWNDs; needs user-try |
+| Create new Workspace | `call_core` | **055 user-ok** — hide/show HWNDs |
 | Reload configuration | `call_core` | Wired (049) |
 | New Tab / New Window / splits / copy / font / scroll / … | overlap | See command-palette.json (049 all Wired) |
 | lua `launch_menu` | `dynamic` | Wired in ShowLauncher Picker (049) |

@@ -5,6 +5,7 @@
 //! Cell fills use abutting `cell_span` (029). Glyphs sit on wezterm-gui's
 //! integer cell grid (`ceil` + `num_cells * cell_w`, not HarfBuzz `x_advance`)
 //! so the cursor left edge matches the last glyph at 120dpi (030).
+//! Focused cursor fills at `cursor.x` even when that col is past `visible_cells()` (031).
 //! Not a viewport bitmap (010) and not the wezterm-gui GPU atlas. See decision 017.
 
 use std::collections::{HashMap, VecDeque};
@@ -351,6 +352,23 @@ impl GlyphPainter {
             fill_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, r, g, b, 255);
         }
 
+        // 031: VT cursor often sits past the last stored cell (empty after the
+        // prompt, after a typed character, after space). visible_cells() then
+        // has no matching col, so the loop above never fills. wezterm-gui
+        // paints a cursor quad at cursor.x regardless. Always fill when focused.
+        if focused {
+            fill_cursor_block(
+                &mut pixels,
+                phys_w,
+                phys_h,
+                line,
+                cursor_col,
+                cols,
+                cell_w,
+                pal,
+            );
+        }
+
         if custom_blocks {
             for cell in line.visible_cells() {
                 let col = cell.cell_index();
@@ -462,13 +480,9 @@ impl GlyphPainter {
         }
 
         if !focused {
-            if let Some(col) = cursor_col {
-                let ncells = line
-                    .get_cell(col)
-                    .map(|c| c.width().max(1))
-                    .unwrap_or(1);
+            if let Some(col) = cursor_block_col(cursor_col, cols) {
                 let (cr, cg, cb, _) = pal.cursor_border.as_rgba_u8();
-                let (x, w) = cell_span(col, ncells, cell_w);
+                let (x, w) = cell_span(col, cursor_ncells(line, col), cell_w);
                 stroke_rect(&mut pixels, phys_w, phys_h, x, 0, w, phys_h, cr, cg, cb);
             }
             let hsb = config::configuration().inactive_pane_hsb;
@@ -655,6 +669,34 @@ fn cell_span(col: usize, ncells: usize, cell_w: f64) -> (i32, u32) {
     let x0 = cell_edge(col, cell_w);
     let x1 = cell_edge(col + ncells, cell_w);
     (x0, (x1 - x0).max(1) as u32)
+}
+
+/// Cursor column to paint, if it sits inside the sprite. Independent of whether
+/// `visible_cells()` stored that col (031).
+fn cursor_block_col(cursor_col: Option<usize>, cols: usize) -> Option<usize> {
+    cursor_col.filter(|&c| c < cols)
+}
+
+fn cursor_ncells(line: &Line, col: usize) -> usize {
+    line.get_cell(col).map(|c| c.width().max(1)).unwrap_or(1)
+}
+
+fn fill_cursor_block(
+    pixels: &mut [u8],
+    phys_w: u32,
+    phys_h: u32,
+    line: &Line,
+    cursor_col: Option<usize>,
+    cols: usize,
+    cell_w: f64,
+    pal: &ColorPalette,
+) {
+    let Some(col) = cursor_block_col(cursor_col, cols) else {
+        return;
+    };
+    let (r, g, b, _) = pal.cursor_bg.as_rgba_u8();
+    let (x, w) = cell_span(col, cursor_ncells(line, col), cell_w);
+    fill_rect(pixels, phys_w, phys_h, x, 0, w, phys_h, r, g, b, 255);
 }
 
 fn stroke_rect(
@@ -976,5 +1018,19 @@ mod cell_span_tests {
         };
         let (r, g, b) = unpack_rgb(apply_hsb_u32(pack_rgb(0x28, 0x2a, 0x36), t));
         assert!(r < 0x28 && g < 0x2a && b < 0x36, "got #{r:02x}{g:02x}{b:02x}");
+    }
+
+    #[test]
+    fn cursor_past_visible_cells_still_paints() {
+        // Prompt / typed char / space: stored cells 0..n, VT cursor at n.
+        let visible = [0usize, 1, 2];
+        let cursor = 3;
+        assert!(
+            !visible.contains(&cursor),
+            "fixture: cursor past last stored cell"
+        );
+        assert_eq!(cursor_block_col(Some(cursor), 80), Some(3));
+        assert_eq!(cursor_block_col(Some(80), 80), None);
+        assert_eq!(cursor_block_col(None, 80), None);
     }
 }

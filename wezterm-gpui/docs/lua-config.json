@@ -1,14 +1,14 @@
 {
   "id": "wezterm-gpui-lua-config",
   "schema_version": 1,
-  "updated": "2026-08-28T18:20:00Z",
+  "updated": "2026-08-29T02:55:00Z",
   "source_file": "C:\\Users\\rafael\\.wezterm.lua",
   "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
   "stats": {
     "keys": 28,
-    "user_ok": 14,
+    "user_ok": 18,
     "partial": 1,
-    "not_tested": 5,
+    "not_tested": 1,
     "no_visible_change": 3,
     "not_wired_or_parked": 5
   },
@@ -22,7 +22,7 @@
     {
       "id": "enable_scroll_bar",
       "key": "enable_scroll_bar",
-      "detail": "050: GPUI rail + thumb when lua enable_scroll_bar is true (wezterm-gui ScrollHit formula). Needs user-try. Was parked until asked.",
+      "detail": "050: GPUI rail + thumb when lua enable_scroll_bar is true (wezterm-gui ScrollHit formula). User-ok 2026-08-28.",
       "blocked_by": []
     },
     {
@@ -211,9 +211,9 @@
       "user_value": "true",
       "slice": "050",
       "gpui": "honored",
-      "user_try": "not_tested",
+      "user_try": "ok",
       "at": "2026-08-28T13:10:00Z",
-      "notes": "050: per-pane 14px rail + thumb (click/drag). Formula from wezterm-gui ScrollHit. Needs user-try."
+      "notes": "050: per-pane 14px rail + thumb (click/drag). Formula from wezterm-gui ScrollHit. **User-ok** 2026-08-28."
     },
     {
       "key": "max_fps",
@@ -271,9 +271,9 @@
       "user_value": "default includes cmd.exe, powershell.exe, pwsh.exe",
       "slice": "039",
       "gpui": "honored",
-      "user_try": "not_tested",
+      "user_try": "ok",
       "at": "2026-08-27T23:10:00Z",
-      "notes": "Tab X / Ctrl+W skip prompt when Pane::can_close_without_prompting (same skip list as wezterm-gui)."
+      "notes": "Tab X / Ctrl+W skip prompt when Pane::can_close_without_prompting (same skip list as wezterm-gui). **User-ok** 2026-08-28."
     },
     {
       "key": "window_close_confirmation",
@@ -281,9 +281,9 @@
       "user_value": "AlwaysPrompt (default); POC skip-lists like window close",
       "slice": "039",
       "gpui": "honored",
-      "user_try": "not_tested",
+      "user_try": "ok",
       "at": "2026-08-27T23:10:00Z",
-      "notes": "NeverPrompt → no dialog. AlwaysPrompt still skips cmd.exe. Ctrl+Q matches window-close, not wezterm QuitApplication always-prompt."
+      "notes": "NeverPrompt → no dialog. AlwaysPrompt still skips cmd.exe. Ctrl+Q matches window-close, not wezterm QuitApplication always-prompt. **User-ok** 2026-08-28."
     },
     {
       "key": "inactive_pane_hsb",
@@ -321,9 +321,9 @@
       "user_value": "default = WslDomain::default_domains() from wsl -l -v",
       "slice": "053",
       "gpui": "honored",
-      "user_try": "not_tested",
+      "user_try": "ok",
       "at": "2026-08-28T18:20:00Z",
-      "notes": "mux_host register_configured_domains. Empty lua wsl_domains={} disables discovery (same as wezterm-gui). Needs user-try of a distro from the chevron."
+      "notes": "mux_host register_configured_domains. Empty lua wsl_domains={} disables discovery (same as wezterm-gui). **User-ok** 2026-08-28 (chevron / palette / launcher)."
     }
   ]
 }

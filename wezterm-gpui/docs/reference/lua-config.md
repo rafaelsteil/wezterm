@@ -6,16 +6,16 @@ Do not keep a second copy of every key in `HANDOFF.md` or `STATE.json`. Those fi
 
 User file: `C:\Users\rafael\.wezterm.lua`.
 
-## Stats (2026-08-28)
+## Stats (2026-08-29)
 
 From `lua-config.json` `stats`:
 
 | Bucket | Count |
 |---|---|
-| Keys tracked | 27 |
-| User-ok | 14 |
+| Keys tracked | 28 |
+| User-ok | 18 |
 | Partial | 1 (Ctrl+click opens; no hover highlight) |
-| Not tested | 4 (`adjust_window_size`, skip-close keys, `enable_scroll_bar`) |
+| Not tested | 1 (`adjust_window_size`) |
 | No visible change (already matched) | 3 (fancy tab bar, window decorations, title-button alignment) |
 | Not wired / parked | 5 |
 
@@ -27,7 +27,7 @@ From `lua-config.json` `stats`:
 | [034](../plans/034-lua-config-second-slice.md) | Tab chrome + user `mouse_bindings`. **User-ok** except hover highlight. |
 | [041](../plans/041-inactive-pane-hsb.md) | `inactive_pane_hsb`. **User-ok.** |
 | [042](../plans/042-palette-selection-contrast.md) | `command_palette_fg_color` / `command_palette_bg_color` invert on selected row. **User-ok.** |
-| [050](../plans/050-overlay-parity-and-scrollbar.md) | `enable_scroll_bar` rail + thumb. **Needs user-try.** |
+| [050](../plans/050-overlay-parity-and-scrollbar.md) | `enable_scroll_bar` rail + thumb. **User-ok.** |
 
 ## Do not start unless asked
 

@@ -16,4 +16,6 @@ Do not start 026/031, unix Attach, `window/` cutover.
 
 Needs user-try: type a partial path or command in cmd.exe / WSL, press Tab, completion runs; Shift+Tab if the shell uses it; Ctrl+Q dialog Tab still moves between buttons.
 
+**User-ok 2026-08-28.**
+
 Record: `docs/decisions/054-tab-sends-pty-completion.json`.

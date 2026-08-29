@@ -13,6 +13,8 @@ Same class of bug as 025 dest origin/size.
 
 User 2026-08-27: **not user-ok**. Gap persisted. Follow-up: `docs/plans/030-integer-cell-grid.md`.
 
+**User-ok 2026-08-28** (gap closed after 030).
+
 ## Out
 
 - Integer cell metrics / `cell_width` lua

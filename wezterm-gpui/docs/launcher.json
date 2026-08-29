@@ -1,7 +1,7 @@
 {
   "id": "wezterm-gpui-launcher",
   "schema_version": 1,
-  "updated": "2026-08-28T23:55:00Z",
+  "updated": "2026-08-29T02:55:00Z",
   "legacy": "wezterm-gui/src/overlay/launcher.rs. Trigger: right-click tab-bar Plus (mouseevent do_new_tab_button_click → ShowLauncher). Also ShowLauncher / ShowLauncherArgs / ShowTabNavigator key assignments.",
   "gpui": "049 searchable Picker (not a termwiz clone). 027 chevron is still the new-tab menu. ShowLauncher / ShowTabNavigator Wired in the palette. Unique ops tracked here; COMMANDS+KEY_ASSIGNMENTS overlap docs/command-palette.json.",
   "note": "Per-operation tracker for the wezterm-gui Launcher. STATE.json points here. Append; never delete rows. gpui: wired | listed | needs_mux | needs_gpui | parked | n_a. kind: call_core | gpui_window | gpui_ui | dynamic. user_try: ok | not_tested | n_a. Recommendation: do not clone the overlay. Domain/workspace/launch_menu are mux calls; the rest is a second dump of the palette.",
@@ -87,8 +87,8 @@
       "kind": "call_core",
       "core": "mux WslDomain (config wsl_domains / WslDomain::default_domains) then spawn_pane",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "053: register WSL domains in mux_host like wezterm-gui. Chevron / ShowLauncher / palette New Tab (Domain …). Spawn is LocalDomain::spawn_pane with cmd None. docker-desktop* listed if wsl -l shows them (same as wezterm-gui)."
+      "user_try": "ok",
+      "notes": "053: register WSL domains in mux_host like wezterm-gui. Chevron / ShowLauncher / palette New Tab (Domain …). Spawn is LocalDomain::spawn_pane with cmd None. docker-desktop* listed if wsl -l shows them (same as wezterm-gui). **User-ok** 2026-08-28."
     },
     {
       "id": "AttachDomain.unix",
@@ -107,8 +107,8 @@
       "kind": "call_core",
       "core": "mux workspace create + switch",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "055: generate_workspace_name (no prompt), set_active_workspace, hide other HWNDs, spawn one HWND. Needs user-try."
+      "user_try": "ok",
+      "notes": "055: generate_workspace_name (no prompt), set_active_workspace, hide other HWNDs, spawn one HWND. **User-ok** 2026-08-28."
     },
     {
       "id": "SwitchToWorkspace.switch",
@@ -117,8 +117,8 @@
       "kind": "call_core",
       "core": "mux.set_active_workspace + show matching HWNDs",
       "gpui": "wired",
-      "user_try": "not_tested",
-      "notes": "055: ShowWindow SW_HIDE/SW_SHOW. Does not destroy AppShell (SplitLayout stays). Empty workspace spawns a new HWND."
+      "user_try": "ok",
+      "notes": "055: ShowWindow SW_HIDE/SW_SHOW. Does not destroy AppShell (SplitLayout stays). Empty workspace spawns a new HWND. **User-ok** 2026-08-28."
     },
     {
       "id": "ReloadConfiguration",

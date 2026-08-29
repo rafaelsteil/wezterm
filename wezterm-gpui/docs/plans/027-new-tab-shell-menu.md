@@ -23,4 +23,4 @@ Record: `docs/decisions/027-new-tab-shell-menu.json`.
 
 **User-ok 2026-08-27** (“works well”) after 028 icons.
 
-User 2026-08-28: chevron menu opened above the Plus. Retry after `dropdown_menu_with_anchor(Anchor::TopRight)`.
+User 2026-08-28: chevron menu opened above the Plus. **User-ok** after `dropdown_menu_with_anchor(Anchor::TopRight)`.

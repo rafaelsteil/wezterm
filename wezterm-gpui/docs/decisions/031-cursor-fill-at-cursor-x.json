@@ -1,0 +1,6 @@
+{
+  "id": "031-cursor-fill-at-cursor-x",
+  "at": "2026-08-29T03:05:00Z",
+  "decision": "cursor_block_fills_at_cursor_x_not_visible_cells",
+  "rationale": "User asked to unpark 031. Focused cursor fill walked visible_cells() only, so a VT cursor past the last stored cell (launch/new tab, after a typed char, after space) never painted; backspace moved onto an existing cell. Match wezterm-gui: fill cursor_bg at cursor.x even when that col is empty. Do not add a blink timer or change 017 skip-layout."
+}

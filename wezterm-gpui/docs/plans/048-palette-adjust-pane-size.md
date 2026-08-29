@@ -18,4 +18,6 @@ Stay listed: charselect, copy-mode, search, launcher, WSL/domains, SpawnWindow, 
 
 Needs user-try: Split H or V, then palette Resize Pane 1 cell Left/Right (divider moves one cell).
 
+**User-ok 2026-08-28.**
+
 Record: `docs/decisions/048-palette-adjust-pane-size.json`.

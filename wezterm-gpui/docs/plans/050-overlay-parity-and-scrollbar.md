@@ -28,4 +28,6 @@ Stay parked: 026 monitor-move hang, 031 cursor until backspace, `window/` cutove
 
 Needs user-try: New Window offset, Activate Window 2, Ctrl+Shift+F search, Quick Select, pane letter keys, lua scrollbar.
 
+**User-ok 2026-08-28.**
+
 Record: `docs/decisions/050-overlay-parity-and-scrollbar.json`.
