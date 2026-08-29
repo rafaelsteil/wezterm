@@ -56,6 +56,30 @@ pub fn find_in_lines(
     hits
 }
 
+/// Hits should be newest-first (high `y` first), like wezterm-gui reversed results.
+/// Keep `requested` when that hit is on-screen; otherwise the newest visible hit.
+/// Off-screen `requested` (typing reset to 0) must not jump to scrollback_top.
+pub fn pick_current_hit(
+    hits: &[SearchHit],
+    requested: usize,
+    view_top: StableRowIndex,
+    view_bot: StableRowIndex,
+) -> usize {
+    if hits.is_empty() {
+        return 0;
+    }
+    let last = hits.len() - 1;
+    if requested <= last {
+        let y = hits[requested].y;
+        if y >= view_top && y < view_bot {
+            return requested;
+        }
+    }
+    hits.iter()
+        .position(|h| h.y >= view_top && h.y < view_bot)
+        .unwrap_or(requested.min(last))
+}
+
 fn find_sub(hay: &str, needle: &str, from: usize, case_sensitive: bool) -> Option<usize> {
     if from > hay.len() {
         return None;
@@ -185,5 +209,27 @@ mod tests {
         assert_eq!(find_sub("NTUSER.DAT", "NTUSER", 0, true), Some(0));
         assert_eq!(find_sub("NTUSER.DAT", "ntuser", 0, true), None);
         assert_eq!(find_sub("NTUSER.DAT", "ntuser", 0, false), Some(0));
+    }
+
+    fn hit(y: StableRowIndex) -> SearchHit {
+        SearchHit { y, x: 0, len: 1 }
+    }
+
+    #[test]
+    fn pick_visible_over_requested_offscreen() {
+        let hits = vec![hit(100), hit(10), hit(0)];
+        assert_eq!(pick_current_hit(&hits, 0, 5, 20), 1);
+    }
+
+    #[test]
+    fn pick_keeps_requested_when_visible() {
+        let hits = vec![hit(12), hit(10)];
+        assert_eq!(pick_current_hit(&hits, 1, 5, 20), 1);
+    }
+
+    #[test]
+    fn pick_newest_when_nothing_visible() {
+        let hits = vec![hit(100), hit(90)];
+        assert_eq!(pick_current_hit(&hits, 0, 0, 10), 0);
     }
 }

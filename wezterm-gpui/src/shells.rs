@@ -154,6 +154,14 @@ mod tests {
         let shells = available_shells();
         assert!(!shells.is_empty());
         assert_eq!(shells[0].id, "cmd");
+        assert_eq!(
+            shells[0].label,
+            if cfg!(windows) {
+                "Command Prompt"
+            } else {
+                "Default shell"
+            }
+        );
         assert_eq!(default_shell().id, "cmd");
         assert!(shells[0].domain.is_none());
     }
@@ -182,6 +190,7 @@ mod tests {
     fn mux_domain_profile_has_no_local_command() {
         let p = ShellProfile::mux_domain("WSL:Ubuntu");
         assert_eq!(p.id, "WSL:Ubuntu");
+        assert_eq!(p.label, "WSL:Ubuntu");
         assert_eq!(p.domain.as_deref(), Some("WSL:Ubuntu"));
         assert!(p.command().is_none());
     }

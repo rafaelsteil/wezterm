@@ -1,0 +1,7 @@
+{
+  "id": "056-search-overlay-no-pty-shrink",
+  "at": "2026-08-29T18:40:00Z",
+  "decision": "search_bar_overlays_last_row_not_flex_sibling",
+  "rationale": "User: vim Ctrl+Shift+F eats the first visible line for ~1s then redraws; typing duplicates content; close only redraws after another key. A flex sibling search bar shrank term-host (resize_display + 450ms ConPTY). Overlay the last row like wezterm-gui. Reverse hits newest-first and pick a visible match so typing does not jump to scrollback_top. Restore viewport_on_open on close. Do not start 026 or window/ cutover.",
+  "record": "docs/plans/056-search-overlay-no-pty-shrink.md"
+}

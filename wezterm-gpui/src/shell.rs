@@ -2499,27 +2499,38 @@ impl Render for AppShell {
             .child(
                 div()
                     .id("term-host")
+                    .relative()
                     .flex_1()
                     .w_full()
                     .min_h_0()
                     .bg(rgb(0x0c0c0c))
-                    .when_some(pane_body, |this, body| this.child(body)),
+                    .when_some(pane_body, |this, body| this.child(body))
+                    // Overlay the last terminal row (wezterm-gui search bar).
+                    // A flex sibling shrinks term-host → resize_display + 450ms
+                    // ConPTY, which eats vim's first line then redraws (056).
+                    .when_some(search_bar, |this, text| {
+                        this.child(
+                            div()
+                                .id("search-bar")
+                                .absolute()
+                                .bottom_0()
+                                .left_0()
+                                .right_0()
+                                .h(px(26.))
+                                .flex()
+                                .items_center()
+                                .px_3()
+                                .overflow_hidden()
+                                .bg(rgb(0xe8e8e8))
+                                .child(
+                                    Label::new(text)
+                                        .text_size(px(13.))
+                                        .text_color(rgb(0x111111))
+                                        .whitespace_nowrap(),
+                                ),
+                        )
+                    }),
             )
-            .when_some(search_bar, |this, text| {
-                this.child(
-                    div()
-                        .id("search-bar")
-                        .w_full()
-                        .px_3()
-                        .py_1()
-                        .bg(rgb(0xe8e8e8))
-                        .child(
-                            Label::new(text)
-                                .text_size(px(13.))
-                                .text_color(rgb(0x111111)),
-                        ),
-                )
-            })
             .child(
                 div()
                     .id("status-bar")

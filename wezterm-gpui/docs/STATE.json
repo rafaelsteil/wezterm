@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-29T03:45:00Z",
+  "updated": "2026-08-29T20:50:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "049: palette catalog still needs a try if not done (charselect/copy mode/launcher/reload). 029/031 user-ok. Come back later: 026 hang, 034 hover, unix Attach, lua REPL. Do not start 026. Do not start window/ cutover. Do not rewrite splits onto Mux::split_pane.",
+      "action": "057: new-tab titles should match the chevron (Command Prompt / WSL:…). 049 catalog still needs a try if not done. Come back later: 026 hang, 034 hover, unix Attach, lua REPL. Do not start 026. Do not start window/ cutover. Do not rewrite splits onto Mux::split_pane.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default; 050 palette-only. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **user-ok** (gap closed after 030). 030 integer cell grid **user-ok**. Cursor at cursor.x **031 user-ok**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok** (052: this HWND only when others exist). 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells **user-ok**. 040 splits **user-ok**. 041 inactive HSB **user-ok**. 042 palette selection invert **user-ok**. 043 palette ↑↓ keep selection **user-ok**. 044 palette core/tab chrome **user-ok**. 045 palette ↑↓ scroll-into-view **user-ok**. 046 palette pane dir/rotate/zoom **user-ok**. 047 palette window chrome **user-ok**. 048 palette AdjustPaneSize **user-ok**. 049 palette catalog complete (89 wired / 0 listed), needs user-try. 050 overlay parity + scrollbar **user-ok**. 051 cascade/focus/badge **user-ok**. 052 close-this-window + search copy **user-ok**. 053 WSL/exec mux domains **user-ok**. 054 Tab → PTY completion **user-ok**. 055 mux workspaces **user-ok**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default; 050 palette-only. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **user-ok** (gap closed after 030). 030 integer cell grid **user-ok**. Cursor at cursor.x **031 user-ok**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok** (052: this HWND only when others exist). 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells **user-ok**. 040 splits **user-ok**. 041 inactive HSB **user-ok**. 042 palette selection invert **user-ok**. 043 palette ↑↓ keep selection **user-ok**. 044 palette core/tab chrome **user-ok**. 045 palette ↑↓ scroll-into-view **user-ok**. 046 palette pane dir/rotate/zoom **user-ok**. 047 palette window chrome **user-ok**. 048 palette AdjustPaneSize **user-ok**. 049 palette catalog complete (89 wired / 0 listed), needs user-try. 050 overlay parity + scrollbar **user-ok**. 051 cascade/focus/badge **user-ok**. 052 close-this-window + search copy **user-ok**. 053 WSL/exec mux domains **user-ok**. 054 Tab → PTY completion **user-ok**. 055 mux workspaces **user-ok**. 056 search overlay no PTY shrink **user-ok**. 057 tab title from dropdown **wired, needs user-try**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -271,6 +271,16 @@
       "id": "mux-workspaces",
       "status": "done",
       "notes": "055: ClientId + default_workspace. HWND ↔ MuxWindow. New tabs Domain::spawn. Create/switch hide/show HWNDs (keep SplitLayout). Last HWND of a workspace falls back if another remains. **User-ok** 2026-08-28."
+    },
+    {
+      "id": "search-overlay-no-pty-shrink",
+      "status": "done",
+      "notes": "056: search bar was a flex sibling that shrank term-host (resize_display + 450ms ConPTY; vim first line eaten then redrawn). Overlay last row. Typing jumped to oldest scrollback hit; newest-first + pick visible. Close left viewport in scrollback; restore viewport_on_open. cargo check green; cargo test --lib pick_ 3/3. **User-ok** 2026-08-29 (“Fixed”)."
+    },
+    {
+      "id": "tab-title-from-dropdown",
+      "status": "done",
+      "notes": "057: TermPane::title used LocalPane::get_title (cmd.exe/wsl.exe). Tab chrome now uses profile.label (dropdown). Rename tab override stays. cargo check green; cargo test --lib shells. Needs user-try."
     },
     {
       "id": "delete-old-ui",
@@ -624,6 +634,18 @@
       "decision": "cursor_block_fills_at_cursor_x_not_visible_cells",
       "rationale": "User unparked 031 (and marked 029 OK). Focused cursor fill walked visible_cells() only, so a VT cursor past the last stored cell never painted. Fill cursor_bg at cursor.x even when that col is empty. Do not add a blink timer or change 017 skip-layout.",
       "record": "docs/decisions/031-cursor-fill-at-cursor-x.json"
+    },
+    {
+      "at": "2026-08-29T18:40:00Z",
+      "decision": "search_bar_overlays_last_row_not_flex_sibling",
+      "rationale": "User: vim Ctrl+Shift+F eats the first visible line for ~1s then redraws; typing duplicates content; close only redraws after another key. Flex sibling shrank term-host (resize_display + 450ms ConPTY). Overlay last row like wezterm-gui. Newest-first hits + pick visible; restore viewport_on_open on close. Do not start 026 or window/ cutover.",
+      "record": "docs/decisions/056-search-overlay-no-pty-shrink.json"
+    },
+    {
+      "at": "2026-08-29T20:50:00Z",
+      "decision": "tab_title_is_dropdown_profile_label_not_pty_basename",
+      "rationale": "User: new shell/domain tabs should show the chevron labels (Command Prompt, Windows PowerShell, PowerShell, WSL:…). LocalPane::get_title spices default wezterm into cmd.exe/wsl.exe. Use profile.label. Rename tab override stays. Do not start 026 or window/ cutover.",
+      "record": "docs/decisions/057-tab-title-from-dropdown.json"
     }
   ],
   "constraints": [
@@ -752,6 +774,18 @@
       "legacy": "wezterm-gui SwitchToWorkspace / SwitchWorkspaceRelative + frontend WorkspaceSwitcher (hide OS windows by mux workspace tag)",
       "gpui": "wezterm-gpui/src/workspaces.rs + mux_host.rs Domain::spawn + shell.rs hide/show HWND",
       "e2e": "user-ok 2026-08-28 (create/switch/focus, OS X and `exit` show previous workspace, no ghost)."
+    },
+    "search_overlay_no_pty_shrink": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui overlay/copy.rs compute_search_row replaces last terminal row; PTY size unchanged; results reversed newest-first",
+      "gpui": "wezterm-gpui/src/shell.rs search-bar absolute on term-host; find.rs pick_current_hit; term_pane.rs reverse hits + viewport_on_open",
+      "e2e": "user-ok 2026-08-29 (“Fixed”). vim Ctrl+Shift+F: no first-line jump, no duplicate on type, close redraws without an extra key."
+    },
+    "tab_title_from_dropdown": {
+      "status": "wired_needs_user_try",
+      "legacy": "wezterm-gui tabbar pane.title / format-tab-title (process basename or OSC)",
+      "gpui": "wezterm-gpui/src/term_pane.rs title() uses profile.label; ShellTab.title_override for Rename tab",
+      "e2e": "057 wired 2026-08-29. Needs user-try: Plus/chevron/WSL tab text matches the menu."
     },
     "gpui_component_icon_assets": {
       "status": "poc_user_ok",
@@ -1339,6 +1373,21 @@
       "at": "2026-08-29T03:45:00Z",
       "id": "031_cursor_block_user_ok",
       "detail": "User 2026-08-28 after fill_cursor_block: “fixed.” Launch/new tab, type, space, backspace show the block. Do not start 026."
+    },
+    {
+      "at": "2026-08-29T18:40:00Z",
+      "id": "search_bar_shrinks_pty_and_jumps_scrollback",
+      "detail": "User 2026-08-29 in vim: Ctrl+Shift+F eats the first visible row for ~1s then redraws; typing duplicates some on-screen content (highlights ok); close only redraws after another key. Causes: (1) search bar was a flex sibling under term-host so apply_layout resize_display then 450ms ConPTY; (2) set_search jumped to hits[0] oldest in scrollback (find_in_lines top-down) so typing showed a previous vim frame; (3) clear_search did not restore viewport so live snap waited for key_down. 056: absolute overlay on last row; reverse hits + pick_current_hit visible; restore viewport_on_open. cargo check green; cargo test --lib pick_ 3/3. Needs user-try."
+    },
+    {
+      "at": "2026-08-29T20:40:00Z",
+      "id": "056_search_overlay_user_ok",
+      "detail": "User 2026-08-29 after overlay + newest-visible hit + viewport restore: “Fixed.” vim Ctrl+Shift+F no longer eats the first row, typing does not duplicate, close redraws without an extra key. Do not start 026."
+    },
+    {
+      "at": "2026-08-29T20:50:00Z",
+      "id": "tab_title_was_pty_basename",
+      "detail": "User 2026-08-29: new shell/domain tabs should use the chevron strings (Command Prompt, Windows PowerShell, PowerShell, WSL:MuleLinux, …). TermPane::title used LocalPane::get_title, which replaces default wezterm with cmd.exe/wsl.exe. 057: title() returns fallback_title (profile.label). Rename tab override stays. cargo check green; cargo test --lib shells. Needs user-try."
     }
   ],
   "blockers": [],
@@ -1392,6 +1441,8 @@
     "mux_wsl_domains_053": "user_ok",
     "tab_sends_pty_completion_054": "user_ok",
     "mux_workspaces_055": "user_ok",
+    "search_overlay_no_pty_shrink_056": "user_ok",
+    "tab_title_from_dropdown_057": "wired_needs_user_try",
     "command_palette_matrix": "docs/command-palette.json",
     "launcher_matrix": "docs/launcher.json"
   }

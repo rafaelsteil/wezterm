@@ -1,0 +1,7 @@
+{
+  "id": "057-tab-title-from-dropdown",
+  "at": "2026-08-29T20:50:00Z",
+  "decision": "tab_title_is_dropdown_profile_label_not_pty_basename",
+  "rationale": "User: new shell/domain tabs should show the chevron labels (Command Prompt, Windows PowerShell, PowerShell, WSL:…). LocalPane::get_title spices default wezterm into cmd.exe/wsl.exe. Use profile.label. Rename tab override stays. Do not start 026 or window/ cutover.",
+  "record": "docs/plans/057-tab-title-from-dropdown.md"
+}

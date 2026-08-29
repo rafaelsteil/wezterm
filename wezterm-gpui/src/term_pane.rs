@@ -25,7 +25,7 @@ use wezterm_term::input::{
 use wezterm_term::{Alert, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
 
 use crate::find::{
-    alphabet, find_in_lines, quick_select_matches, HintMatch, SearchHit,
+    alphabet, find_in_lines, pick_current_hit, quick_select_matches, HintMatch, SearchHit,
 };
 use crate::glyph_paint::{GlyphPainter, TermPaint};
 use crate::shells::ShellProfile;
@@ -71,7 +71,7 @@ pub struct TermPane {
     /// AppShell's focus handle. TermScreen swallows left-click, so we
     /// focus the shell here or typing stays dead until a right-click bubbles.
     shell_focus: FocusHandle,
-    /// Tab title when the PTY has not set one yet (profile label).
+    /// Tab chrome title: new-tab dropdown label (057), not ConPTY basename.
     fallback_title: String,
     /// Spawned command; a split of this pane reuses it.
     profile: ShellProfile,
@@ -92,6 +92,9 @@ struct PaneSearch {
     case_sensitive: bool,
     hits: Vec<SearchHit>,
     current: usize,
+    /// Viewport when Search opened. Restore on close so a jump does not
+    /// leave the pane in scrollback until the next PTY key (056).
+    viewport_on_open: Option<StableRowIndex>,
 }
 
 struct QuickSelectState {
@@ -283,16 +286,12 @@ impl TermPane {
     }
 
     pub fn title(&self) -> String {
-        match &self.live {
-            Ok(live) => {
-                let title = live.pane.get_title();
-                if title.is_empty() || title.eq_ignore_ascii_case("wezterm") {
-                    self.fallback_title.clone()
-                } else {
-                    title
-                }
-            }
-            Err(_) => "error".into(),
+        // Chevron / Plus labels (Command Prompt, WSL:Ubuntu, …). LocalPane
+        // get_title() turns the default "wezterm" into cmd.exe / wsl.exe.
+        if self.live.is_err() {
+            "error".into()
+        } else {
+            self.fallback_title.clone()
         }
     }
 
@@ -569,10 +568,16 @@ impl TermPane {
 
     pub fn set_search(&mut self, query: &str, case_sensitive: bool, current: usize) {
         let hits = self.compute_search_hits(query, case_sensitive);
+        let viewport_on_open = self
+            .search
+            .as_ref()
+            .map(|s| s.viewport_on_open)
+            .unwrap_or(self.viewport);
         let current = if hits.is_empty() {
             0
         } else {
-            current.min(hits.len() - 1)
+            let (top, bot) = self.search_view_range();
+            pick_current_hit(&hits, current, top, bot)
         };
         if let Some(hit) = hits.get(current) {
             self.jump_to_search_row(hit.y);
@@ -582,6 +587,7 @@ impl TermPane {
             case_sensitive,
             hits,
             current,
+            viewport_on_open,
         });
         self.paint_cache = None;
     }
@@ -616,7 +622,8 @@ impl TermPane {
     }
 
     pub fn clear_search(&mut self) {
-        if self.search.take().is_some() {
+        if let Some(search) = self.search.take() {
+            self.viewport = search.viewport_on_open;
             self.paint_cache = None;
         }
     }
@@ -770,7 +777,22 @@ impl TermPane {
         let start = dims.scrollback_top;
         let end = dims.physical_top.saturating_add(dims.viewport_rows as isize);
         let (first, lines) = live.pane.get_lines(start..end);
-        find_in_lines(first, &lines, query, case_sensitive)
+        let mut hits = find_in_lines(first, &lines, query, case_sensitive);
+        // Newest first (wezterm-gui reverses SearchResult). Typing resets
+        // current to 0; oldest-first jumped into scrollback and looked like
+        // duplicated vim content (056).
+        hits.reverse();
+        hits
+    }
+
+    fn search_view_range(&self) -> (StableRowIndex, StableRowIndex) {
+        let Ok(live) = &self.live else {
+            return (0, 0);
+        };
+        let dims = live.pane.get_dimensions();
+        let top = self.paint_top(&dims);
+        let bot = top.saturating_add(dims.viewport_rows as isize);
+        (top, bot)
     }
 
     fn jump_to_search_row(&mut self, row: StableRowIndex) {
