@@ -12,7 +12,7 @@ GPUI used `cx.theme().accent.opacity(0.22)` behind `theme.foreground` text. On t
 
 ## In this slice
 
-Honor those lua colors for palette chrome. Selected row is a **solid invert** (no accent opacity). Unwired rows stay dimmed (`opacity(0.62)`). Hover accent fill removed (same contrast class). `command_palette_font` stays parked.
+Honor those lua colors for palette chrome. Selected row is a **solid invert** (no accent opacity). Unwired rows stay dimmed (`opacity(0.62)`). Hover accent fill removed (same contrast class). `command_palette_font` is **061**.
 
 **User-ok** 2026-08-27 (“Confirmed colors work”).
 

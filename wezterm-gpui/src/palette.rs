@@ -211,6 +211,9 @@ impl Render for CommandPalette {
         // (palette.rs). GPUI used theme.accent @ 0.22, which on this theme
         // sat next to the text color and hid the highlight (042).
         let (palette_bg, palette_fg) = palette_chrome();
+        let family = crate::lua_ui::command_palette_font_family();
+        let font_px = px(crate::lua_ui::command_palette_font_px());
+        let family_ref = family.as_deref();
 
         div()
             .id("command-palette")
@@ -224,14 +227,14 @@ impl Render for CommandPalette {
             .border_color(cx.theme().border)
             .bg(palette_bg)
             .text_color(palette_fg)
+            .text_size(font_px)
+            .when_some(family_ref, |this, family| this.font_family(family))
             .shadow_lg()
             .child(
-                Label::new("Command Palette")
-                    .text_size(px(14.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(palette_fg),
+                palette_label("Command Palette", family_ref, font_px, palette_fg)
+                    .font_weight(FontWeight::SEMIBOLD),
             )
-            .child(Input::new(&self.query))
+            .child(palette_input(Input::new(&self.query), family_ref, font_px))
             .child(
                 div()
                     .id("command-list")
@@ -280,32 +283,36 @@ impl Render for CommandPalette {
                                             .min_w(px(0.))
                                             .v_flex()
                                             .gap_1()
-                                            .child(
-                                                Label::new(title)
-                                                    .text_size(px(13.))
-                                                    .text_color(row_fg),
-                                            )
-                                            .child(
-                                                Label::new(doc)
-                                                    .text_size(px(11.))
-                                                    .text_color(doc_fg),
-                                            ),
+                                            .child(palette_label(
+                                                title,
+                                                family_ref,
+                                                font_px,
+                                                row_fg,
+                                            ))
+                                            .child(palette_label(
+                                                doc,
+                                                family_ref,
+                                                font_px,
+                                                doc_fg,
+                                            )),
                                     )
                                     .when(!keys.is_empty(), |this| {
-                                        this.child(
-                                            Label::new(keys)
-                                                .text_size(px(11.))
-                                                .text_color(doc_fg),
-                                        )
+                                        this.child(palette_label(
+                                            keys,
+                                            family_ref,
+                                            font_px,
+                                            doc_fg,
+                                        ))
                                     }),
                             )
                     })),
             )
-            .child(
-                Label::new(status)
-                    .text_size(px(12.))
-                    .text_color(cx.theme().muted_foreground),
-            )
+            .child(palette_label(
+                status,
+                family_ref,
+                font_px,
+                cx.theme().muted_foreground,
+            ))
     }
 }
 
@@ -317,6 +324,27 @@ pub(crate) fn palette_chrome() -> (Hsla, Hsla) {
         srgba_hsla(&cfg.command_palette_bg_color),
         srgba_hsla(&cfg.command_palette_fg_color),
     )
+}
+
+fn palette_label(
+    text: impl Into<SharedString>,
+    family: Option<&str>,
+    size: Pixels,
+    color: Hsla,
+) -> Label {
+    let label = Label::new(text).text_size(size).text_color(color);
+    match family {
+        Some(family) => label.font_family(family),
+        None => label,
+    }
+}
+
+fn palette_input(input: Input, family: Option<&str>, size: Pixels) -> Input {
+    let input = input.text_size(size);
+    match family {
+        Some(family) => input.font_family(family),
+        None => input,
+    }
 }
 
 fn srgba_hsla(c: &config::RgbaColor) -> Hsla {

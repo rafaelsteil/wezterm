@@ -23,21 +23,25 @@ Mouse (`term_pane.rs`), **user `mouse_bindings` only** (not wezterm-gui’s defa
 
 - `adjust_window_size_when_changing_font_size = false` — GPUI never grows the HWND on palette font bump
 - `use_fancy_tab_bar = true` — only gpui-component `TabBar`
-- `window_decorations` / `integrated_title_button_*` — 028 TitleBar already Hide/Maximize/Close on the right
 
 ## Still out
 
-- `enable_scroll_bar` (no scrollbar widget)
+- `enable_scroll_bar` is **050** (user-ok)
 - `max_fps` (GPUI owns refresh)
-- `command_palette_font` / `command_palette_font_size` (palette parked)
-- Full default mouse InputMap / hover underline / hand cursor
+- `command_palette_font` / `command_palette_font_size` — **061**
+- `window_decorations` — **062**
+- Full default mouse InputMap
 - `default_prog` / `launch_menu` / live reload / `wezterm.on`
+
+Hover underline / hand cursor is **058** (user-ok).
 
 ## User-try 2026-08-27
 
 - **ok:** `show_tab_index_in_tab_bar`, `hide_tab_bar_if_only_one_tab`, `tab_max_width`, `switch_to_last_active_tab_when_closing_tab`, Ctrl+down Nop, Ctrl+wheel ScrollByPage
-- **partial:** Ctrl+click OpenLink **opens** but does **not** highlight the link on hover (backlog; do not start unless asked)
-- **no visible change (expected):** `use_fancy_tab_bar`, `window_decorations` / title buttons (already matched)
+- **ok:** Ctrl+click OpenLink **opens**
+- **058:** hover underline + PointingHand **user-ok** 2026-08-29
+- **no visible change (expected):** `use_fancy_tab_bar`
+- **062:** `window_decorations` **user-ok** 2026-08-29 (“confirmed as working”)
 - **not tested:** `adjust_window_size_when_changing_font_size`
 
 Per-key matrix: [`docs/lua-config.json`](../lua-config.json).

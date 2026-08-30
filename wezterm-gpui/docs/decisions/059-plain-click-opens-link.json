@@ -1,0 +1,7 @@
+{
+  "id": "059-plain-click-opens-link",
+  "at": "2026-08-29T21:20:00Z",
+  "decision": "honor_wezterm_gui_default_complete_or_open_link_on_plain_click",
+  "rationale": "User: 058 hover OK, but wezterm opens links without Ctrl+click. User lua only adds Ctrl+click; default InputMap still binds unmodified Left Up to CompleteSelectionOrOpenLinkAtMouseCursor. Honor that when there is no selection. Do not start 026.",
+  "record": "docs/plans/059-plain-click-opens-link.md"
+}

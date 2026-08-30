@@ -1,0 +1,7 @@
+{
+  "id": "060-disable-default-mouse-bindings",
+  "at": "2026-08-29T21:40:00Z",
+  "decision": "honor_disable_default_mouse_bindings_for_plain_click_open",
+  "rationale": "User: with disable_default_mouse_bindings = true, wezterm-gui only highlights a URL; GPUI still opened on a plain click. 059 applied the default CompleteSelectionOrOpenLinkAtMouseCursor unconditionally. Gate that default on the flag; keep user lua Ctrl+click OpenLinkAtMouseCursor. Do not start 026.",
+  "record": "docs/plans/060-disable-default-mouse-bindings.md"
+}

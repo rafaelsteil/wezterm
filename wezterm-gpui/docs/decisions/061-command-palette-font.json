@@ -1,0 +1,7 @@
+{
+  "id": "061-command-palette-font",
+  "at": "2026-08-30T02:50:00Z",
+  "decision": "honor_command_palette_font_and_size_on_gpui_palette",
+  "rationale": "User lua sets command_palette_font Segoe UI and command_palette_font_size 12. GPUI palette used theme font + hardcoded px. Apply lua family (else window_frame.font) and point size as CSS px (96/72). Do not start 026. Picker/charselect fonts stay parked.",
+  "record": "docs/plans/061-command-palette-font.md"
+}

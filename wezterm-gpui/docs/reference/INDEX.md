@@ -23,7 +23,7 @@ Third local source (already in our Cargo git cache, **GPL-3.0-or-later — read 
 | GPUI `text_system` vs sprites | [gpui-text-vs-sprites.md](gpui-text-vs-sprites.md) | [tty7.md](tty7.md) `element.rs` |
 | GPUI `shape_line` / Element paint | [tty7.md](tty7.md) (`element.rs`) | Zed `terminal_element.rs` (ideas only) |
 | Compact keyboard / OSC 52 / mouse reports | [gpui-terminal.md](gpui-terminal.md) (`input.rs`, `mouse.rs`) | wezterm-term `Pane::key_down` (we already map to that) |
-| Geometry box-draw / powerline | `wezterm-gpui/src/boxdraw.rs` (023; U+2500–259F) | tty7 `src/terminal/boxdraw.rs` (Apache); gpui-terminal `src/box_drawing.rs`. Powerline later. |
+| Geometry box-draw (023 **finished**) | `wezterm-gpui/src/boxdraw.rs` (U+2500–259F) | tty7 `src/terminal/boxdraw.rs` (Apache); gpui-terminal `src/box_drawing.rs`. Powerline later if asked. |
 | Device-pixel snap, `force_width`, content mask | tty7 `element.rs` `paint_glyphs` / `prepaint` | Zed prepaint snap (ideas only) |
 | PTY resize / ConPTY | Drag: keep 013. Stable grid: 016 committed resize — [rendering-quality.md](rendering-quality.md) | [open-questions.md](open-questions.md) §1 if smear returns |
 | Inline images / kitty graphics | tty7 `images.rs` | later; not this POC |

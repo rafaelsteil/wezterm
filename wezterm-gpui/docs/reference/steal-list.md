@@ -34,11 +34,11 @@ tty7 segments rows, `force_width = cell_width`, clips each run. gpui-terminal *d
 
 Sprites: tight `[col, col+num_cells)` clip (023) **reverted in 025** — at 120dpi it cut LCD/bearings. Row bitmap still clips the line. Padded overflow-only clip later if smear returns. `force_width` is a GPUI-text concern; not this path.
 
-### 5. Box-drawing / powerline as geometry (U+2500–259F done; powerline later)
+### 5. Box-drawing as geometry (023 **finished**)
 
 gpui-terminal `box_drawing.rs` and tty7 `boxdraw.rs` (Apache). Thickness rounded to device pixels; tty7 also covers U+2580 blocks and powerline triangles with an anti-aliased closing-edge quad.
 
-**023:** U+2500–259F is CPU geometry in the line sprite (`src/boxdraw.rs`), not font glyphs. wezterm-gui `customglyph.rs` / tiny-skia not imported. Powerline (U+E0B0…) still font sprites — only if nerd-font prompts look wrong.
+**023 finished:** U+2500–259F is CPU geometry in the line sprite (`src/boxdraw.rs`), not font glyphs. wezterm-gui `customglyph.rs` / tiny-skia not imported. Powerline (U+E0B0…) still font sprites — later slice if nerd-font prompts look wrong, not 023 leftover.
 
 ### 6. Input checklist (when vim/less break)
 

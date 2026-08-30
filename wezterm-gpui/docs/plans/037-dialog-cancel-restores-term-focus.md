@@ -25,4 +25,6 @@ AlertDialog `.on_close` is **not** usable: `build_surface` copies `button_props`
 - Confirm-less X / Ctrl+Q (still confirms)
 - Lua `exit_behavior`
 
+**User-ok** 2026-08-29.
+
 Record: `docs/decisions/037-dialog-cancel-restores-term-focus.json`.

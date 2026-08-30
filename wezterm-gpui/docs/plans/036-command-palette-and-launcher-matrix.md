@@ -47,6 +47,6 @@ Executing a row is `TermWindow::perform_key_assignment` (same as a key binding).
 
 ## Out
 
-- Palette fonts (`command_palette_font`) — still in lua-config backlog
+- Palette fonts (`command_palette_font`) — **061 user-ok**
 - Frecency / `recent-commands.json`
 - macOS menubar rebuild (`CommandDef::recreate_menubar`)

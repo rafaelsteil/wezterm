@@ -1,0 +1,7 @@
+{
+  "id": "058-hyperlink-hover-highlight",
+  "at": "2026-08-29T21:10:00Z",
+  "decision": "hover_underline_and_pointing_hand_like_wezterm_gui",
+  "rationale": "User asked to finish 034: Ctrl+click already opens; hover did not underline or change the cursor. Track current_highlight (Arc ptr_eq) on mouse move, overlay a fg underline on matching cells, PointingHand while hovered. Do not bake into 017 line sprites. Do not start 026.",
+  "record": "docs/plans/058-hyperlink-hover-highlight.md"
+}

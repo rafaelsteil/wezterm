@@ -6,7 +6,8 @@ use std::ffi::OsString;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, IconName, ResizableState, Root, Sizable, TitleBar, WindowExt, h_resizable,
+    ActiveTheme, IconName, ResizableState, Root, Sizable, StyledExt, TitleBar, WindowExt,
+    h_resizable,
     v_resizable,
     button::*,
     label::Label,
@@ -23,7 +24,7 @@ use crate::confirm::{open_confirm, open_line_prompt};
 use crate::lua_ui::{
     active_after_close, format_tab_title, remap_last_after_move, show_tab_bar,
     tab_index_from_assignment, tab_index_move_relative, tab_index_relative, wants_quit_prompt,
-    wants_tab_close_prompt,
+    wants_tab_close_prompt, window_chrome,
 };
 use crate::palette::{CommandPalette, PaletteEvent};
 use crate::picker::{char_select_items, Picker, PickerEvent, PickerItem};
@@ -53,6 +54,10 @@ actions!(
 
 const APP_CONTEXT: &str = "AppShell";
 const PALETTE_CONTEXT: &str = "PaletteOpen";
+
+pub fn app_window_options(cx: &App) -> WindowOptions {
+    app_window_options_at(None, cx)
+}
 
 pub fn bind_keys(cx: &mut App) {
     cx.bind_keys([
@@ -238,6 +243,8 @@ impl AppShell {
         let shells = crate::mux_host::launch_profiles();
         window.focus(&focus_handle, cx);
         window.activate_window();
+        let chrome = crate::lua_ui::window_chrome(config::configuration().window_decorations);
+        crate::win_zorder::apply_native_caption(window, chrome.native_title, chrome.resizable);
         let default = shells.first().cloned().unwrap_or_else(crate::shells::default_shell);
         let mux_window_id = crate::mux_host::new_mux_window().unwrap_or_else(|err| {
             eprintln!("wezterm-gpui mux window: {err:#}");
@@ -2270,6 +2277,112 @@ impl AppShell {
             });
         }
     }
+
+    fn tab_bar(
+        &self,
+        active: usize,
+        tab_titles: &[(usize, String)],
+        cx: &mut Context<Self>,
+    ) -> TabBar {
+        TabBar::new("tabs")
+            .selected_index(active)
+            .on_click(cx.listener(|this, index, window, cx| {
+                this.activate_tab(*index, cx);
+                this.request_terminal_focus(window, cx);
+                cx.notify();
+            }))
+            .children(tab_titles.iter().map(|(index, title)| {
+                let index = *index;
+                Tab::new().label(title.clone()).suffix(
+                    Button::new(("close-tab", index as u64))
+                        .icon(IconName::Close)
+                        .ghost()
+                        .xsmall()
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.confirm_close_tab_at(index, window, cx);
+                        })),
+                )
+            }))
+    }
+
+    /// Tabs + leftover strip (window drag) + plus. wezterm-gui drags
+    /// `TabBarItem::None` even when decorations are `NONE`.
+    fn tab_chrome(
+        &self,
+        active: usize,
+        tab_titles: &[(usize, String)],
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .id("tab-chrome")
+            .h_flex()
+            .w_full()
+            .flex_shrink_0()
+            .items_center()
+            .bg(cx.theme().tokens.tab_bar)
+            .child(
+                self.tab_bar(active, tab_titles, cx)
+                    .flex_shrink_1()
+                    .min_w_0(),
+            )
+            .child(
+                div()
+                    .id("tab-bar-drag")
+                    .flex_1()
+                    .h_full()
+                    .min_h(px(28.))
+                    .min_w_0()
+                    .window_control_area(WindowControlArea::Drag)
+                    .on_mouse_down(MouseButton::Left, |_, window, _| {
+                        window.start_window_move();
+                    }),
+            )
+            .child(self.new_tab_button(cx))
+    }
+
+    fn new_tab_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let shells = self.shells.clone();
+        let plus_tip = format!(
+            "New tab — {} (Ctrl+T)",
+            shells
+                .first()
+                .map(|s| s.label.as_str())
+                .unwrap_or("Command Prompt")
+        );
+        let view = cx.entity();
+        DropdownButton::new("new-tab")
+            .ghost()
+            .xsmall()
+            .button(
+                Button::new("new-tab-plus")
+                    .icon(IconName::Plus)
+                    .ghost()
+                    .xsmall()
+                    .tooltip(plus_tip)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.add_tab(window, cx);
+                        this.request_terminal_focus(window, cx);
+                        cx.notify();
+                    })),
+            )
+            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                let mut menu = menu;
+                for profile in &shells {
+                    let profile = profile.clone();
+                    let view = view.clone();
+                    menu = menu.item(
+                        PopupMenuItem::new(profile.label.clone()).on_click(
+                            move |_, window, cx| {
+                                view.update(cx, |this, cx| {
+                                    this.spawn_profile(&profile, window, cx);
+                                });
+                            },
+                        ),
+                    );
+                }
+                menu
+            })
+    }
 }
 
 impl Render for AppShell {
@@ -2342,6 +2455,7 @@ impl Render for AppShell {
             cfg.enable_tab_bar,
             cfg.hide_tab_bar_if_only_one_tab,
         );
+        let chrome = window_chrome(cfg.window_decorations);
         let overlay_open = self.overlay_open();
         let palette_open = self.palette_open;
         let picker_open = self.picker_kind.is_some();
@@ -2413,88 +2527,36 @@ impl Render for AppShell {
             .flex_col()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
-            .child(
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            Label::new(format!("WezTerm GPUI · {workspace}"))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_size(px(13.)),
-                        )
-                        .child(
-                            Label::new("POC chrome — mux LocalPane + wezterm-font paint")
-                                .text_size(px(12.))
-                                .text_color(cx.theme().muted_foreground),
-                        ),
-                ),
-            )
-            .when(show_tabs, |this| {
+            .when(chrome.integrated_buttons, |this| {
                 this.child(
-                    TabBar::new("tabs")
-                        .selected_index(active)
-                        .on_click(cx.listener(|this, index, window, cx| {
-                            this.activate_tab(*index, cx);
-                            this.request_terminal_focus(window, cx);
-                            cx.notify();
-                        }))
-                        .children(tab_titles.into_iter().map(|(index, title)| {
-                            Tab::new().label(title).suffix(
-                                Button::new(("close-tab", index as u64))
-                                    .icon(IconName::Close)
-                                    .ghost()
-                                    .xsmall()
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        this.confirm_close_tab_at(index, window, cx);
-                                    })),
+                    TitleBar::new()
+                        .when(show_tabs, |bar| {
+                            bar.child(
+                                div()
+                                    .id("integrated-tabs")
+                                    .flex_1()
+                                    .min_w_0()
+                                    .h_full()
+                                    .child(self.tab_chrome(active, &tab_titles, cx)),
                             )
-                        }))
-                        .suffix({
-                            let shells = self.shells.clone();
-                            let plus_tip = format!(
-                                "New tab — {} (Ctrl+T)",
-                                shells
-                                    .first()
-                                    .map(|s| s.label.as_str())
-                                    .unwrap_or("Command Prompt")
-                            );
-                            let view = cx.entity();
-                            DropdownButton::new("new-tab")
-                                .ghost()
-                                .xsmall()
-                                .button(
-                                    Button::new("new-tab-plus")
-                                        .icon(IconName::Plus)
-                                        .ghost()
-                                        .xsmall()
-                                        .tooltip(plus_tip)
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.add_tab(window, cx);
-                                            this.request_terminal_focus(window, cx);
-                                            cx.notify();
-                                        })),
-                                )
-                                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
-                                    let mut menu = menu;
-                                    for profile in &shells {
-                                        let profile = profile.clone();
-                                        let view = view.clone();
-                                        menu = menu.item(
-                                            PopupMenuItem::new(profile.label.clone()).on_click(
-                                                move |_, window, cx| {
-                                                    view.update(cx, |this, cx| {
-                                                        this.spawn_profile(&profile, window, cx);
-                                                    });
-                                                },
-                                            ),
-                                        );
-                                    }
-                                    menu
-                                })
+                        })
+                        .when(!show_tabs, |bar| {
+                            bar.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(
+                                        Label::new(format!("WezTerm GPUI · {workspace}"))
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_size(px(13.)),
+                                    ),
+                            )
                         }),
                 )
+            })
+            .when(!chrome.integrated_buttons && show_tabs, |this| {
+                this.child(self.tab_chrome(active, &tab_titles, cx))
             })
             .child(
                 div()
@@ -2698,15 +2760,34 @@ fn open_app_shell(
 }
 
 fn app_window_options_at(bounds: Option<Bounds<Pixels>>, cx: &App) -> WindowOptions {
-    WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(bounds.unwrap_or_else(|| {
-            Bounds::centered(None, size(px(980.), px(640.)), cx)
-        }))),
-        titlebar: Some(TitlebarOptions {
-            title: Some("WezTerm GPUI".into()),
-            ..TitleBar::title_bar_options()
-        }),
-        ..Default::default()
+    let _ = crate::mux_host::ensure_init();
+    let chrome = window_chrome(config::configuration().window_decorations);
+    let window_bounds = Some(WindowBounds::Windowed(bounds.unwrap_or_else(|| {
+        Bounds::centered(None, size(px(980.), px(640.)), cx)
+    })));
+    if !chrome.client_decorated() {
+        WindowOptions {
+            window_bounds,
+            titlebar: Some(TitlebarOptions {
+                title: Some("WezTerm GPUI".into()),
+                appears_transparent: false,
+                traffic_light_position: None,
+            }),
+            app_owns_titlebar_drag: false,
+            is_resizable: chrome.resizable,
+            ..Default::default()
+        }
+    } else {
+        WindowOptions {
+            window_bounds,
+            titlebar: Some(TitlebarOptions {
+                title: Some("WezTerm GPUI".into()),
+                ..TitleBar::title_bar_options()
+            }),
+            app_owns_titlebar_drag: true,
+            is_resizable: chrome.resizable,
+            ..Default::default()
+        }
     }
 }
 

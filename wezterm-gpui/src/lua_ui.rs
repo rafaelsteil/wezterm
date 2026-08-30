@@ -138,6 +138,67 @@ pub fn remap_last_after_move(last: Option<usize>, from: usize, to: usize) -> Opt
     })
 }
 
+/// First named family in a lua `wezterm.font` TextStyle.
+pub fn first_text_style_family(style: Option<&config::TextStyle>) -> Option<String> {
+    style
+        .and_then(|s| s.font.first())
+        .map(|f| f.family.clone())
+        .filter(|s| !s.is_empty())
+}
+
+/// wezterm-gui: `command_palette_font`, else `window_frame.font`.
+pub fn resolve_palette_font_family(
+    command_palette: Option<&config::TextStyle>,
+    window_frame: Option<&config::TextStyle>,
+) -> Option<String> {
+    first_text_style_family(command_palette).or_else(|| first_text_style_family(window_frame))
+}
+
+pub fn command_palette_font_family() -> Option<String> {
+    let cfg = config::configuration();
+    resolve_palette_font_family(cfg.command_palette_font.as_ref(), cfg.window_frame.font.as_ref())
+}
+
+/// lua `command_palette_font_size` is points (same as `font_size`). GPUI
+/// `text_size` is CSS px; 1pt = 96/72 px at 96dpi (independent of window scale).
+pub fn palette_font_px(size_pt: f64) -> f32 {
+    (size_pt * 96.0 / 72.0).max(1.0) as f32
+}
+
+pub fn command_palette_font_px() -> f32 {
+    palette_font_px(config::configuration().command_palette_font_size)
+}
+
+/// How lua `window_decorations` maps onto a GPUI HWND.
+///
+/// Matches wezterm-gui Windows: `INTEGRATED_BUTTONS` (or `RESIZE` alone)
+/// drops the native caption. `TITLE` without integrated buttons keeps it
+/// (`WS_CAPTION` applied after create — GPUI never sets that style).
+/// MacOS-only flags are ignored here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowChrome {
+    pub native_title: bool,
+    pub integrated_buttons: bool,
+    pub resizable: bool,
+}
+
+impl WindowChrome {
+    /// Client-side chrome (`appears_transparent`); no native caption.
+    pub fn client_decorated(self) -> bool {
+        !self.native_title
+    }
+}
+
+pub fn window_chrome(d: wezterm_input_types::WindowDecorations) -> WindowChrome {
+    use wezterm_input_types::WindowDecorations as D;
+    let integrated = d.contains(D::INTEGRATED_BUTTONS);
+    WindowChrome {
+        native_title: d.contains(D::TITLE) && !integrated,
+        integrated_buttons: integrated,
+        resizable: d.contains(D::RESIZE),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,5 +278,72 @@ mod tests {
         assert_eq!(tab_index_move_relative(0, 1, 3), Some(1));
         assert_eq!(remap_last_after_move(Some(1), 0, 2), Some(0));
         assert_eq!(remap_last_after_move(Some(0), 0, 2), Some(2));
+    }
+
+    #[test]
+    fn palette_font_family_prefers_command_palette() {
+        let pal = config::TextStyle {
+            font: vec![config::FontAttributes::new("Segoe UI")],
+            foreground: None,
+        };
+        let frame = config::TextStyle {
+            font: vec![config::FontAttributes::new("Roboto")],
+            foreground: None,
+        };
+        let empty = config::TextStyle {
+            font: vec![config::FontAttributes::new("")],
+            foreground: None,
+        };
+        assert_eq!(
+            resolve_palette_font_family(Some(&pal), Some(&frame)).as_deref(),
+            Some("Segoe UI")
+        );
+        assert_eq!(
+            resolve_palette_font_family(None, Some(&frame)).as_deref(),
+            Some("Roboto")
+        );
+        assert_eq!(resolve_palette_font_family(None, None), None);
+        assert_eq!(first_text_style_family(Some(&empty)), None);
+    }
+
+    #[test]
+    fn palette_font_px_is_points_at_96dpi() {
+        assert_eq!(palette_font_px(12.0), 16.0);
+        assert!((palette_font_px(14.0) - 14.0 * 4.0 / 3.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn window_chrome_flags() {
+        use wezterm_input_types::WindowDecorations as D;
+
+        let title_resize = window_chrome(D::TITLE | D::RESIZE);
+        assert!(title_resize.native_title);
+        assert!(!title_resize.integrated_buttons);
+        assert!(title_resize.resizable);
+        assert!(!title_resize.client_decorated());
+
+        let title_only = window_chrome(D::TITLE);
+        assert!(title_only.native_title);
+        assert!(!title_only.resizable);
+
+        let integrated = window_chrome(D::INTEGRATED_BUTTONS | D::RESIZE);
+        assert!(!integrated.native_title);
+        assert!(integrated.integrated_buttons);
+        assert!(integrated.resizable);
+        assert!(integrated.client_decorated());
+
+        let title_and_integrated = window_chrome(D::TITLE | D::INTEGRATED_BUTTONS | D::RESIZE);
+        assert!(!title_and_integrated.native_title);
+        assert!(title_and_integrated.integrated_buttons);
+
+        let resize_only = window_chrome(D::RESIZE);
+        assert!(!resize_only.native_title);
+        assert!(!resize_only.integrated_buttons);
+        assert!(resize_only.resizable);
+
+        let none = window_chrome(D::NONE);
+        assert!(!none.native_title);
+        assert!(!none.integrated_buttons);
+        assert!(!none.resizable);
     }
 }

@@ -116,6 +116,18 @@ pub fn hwnd_origin(window: &Window) -> Option<(i32, i32)> {
     }
 }
 
+/// GPUI Windows never sets `WS_CAPTION` (Zed always uses a client title bar).
+/// wezterm-gui `TITLE` is `WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX|WS_MAXIMIZEBOX`.
+/// Call after the HWND exists so lua `TITLE` gets a real OS caption.
+pub fn apply_native_caption(window: &Window, native: bool, resizable: bool) {
+    #[cfg(windows)]
+    windows::apply_native_caption(window, native, resizable);
+    #[cfg(not(windows))]
+    {
+        let _ = (window, native, resizable);
+    }
+}
+
 #[cfg(windows)]
 mod windows {
     use super::WindowZOrder;
@@ -131,7 +143,15 @@ mod windows {
     const HWND_BOTTOM: isize = 1;
     const SWP_NOSIZE: u32 = 0x0001;
     const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOZORDER: u32 = 0x0004;
     const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_FRAMECHANGED: u32 = 0x0020;
+    const GWL_STYLE: i32 = -16;
+    const WS_CAPTION: isize = 0x00C0_0000;
+    const WS_SYSMENU: isize = 0x0008_0000;
+    const WS_THICKFRAME: isize = 0x0004_0000;
+    const WS_MINIMIZEBOX: isize = 0x0002_0000;
+    const WS_MAXIMIZEBOX: isize = 0x0001_0000;
 
     #[repr(C)]
     struct WinRect {
@@ -158,6 +178,8 @@ mod windows {
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn ShowWindow(hwnd: Hwnd, n_cmd_show: i32) -> i32;
         fn EnumWindows(cb: unsafe extern "system" fn(Hwnd, isize) -> i32, lparam: isize) -> i32;
+        fn GetWindowLongPtrW(hwnd: Hwnd, index: i32) -> isize;
+        fn SetWindowLongPtrW(hwnd: Hwnd, index: i32, new_long: isize) -> isize;
     }
 
     const SW_HIDE: i32 = 0;
@@ -273,6 +295,34 @@ mod windows {
             return None;
         }
         Some((rect.left, rect.top))
+    }
+
+    pub fn apply_native_caption(window: &Window, native: bool, resizable: bool) {
+        if !native {
+            return;
+        }
+        let Some(hwnd) = hwnd_from_window(window) else {
+            return;
+        };
+        unsafe {
+            let mut style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            style |= WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+            if resizable {
+                style |= WS_THICKFRAME;
+            } else {
+                style &= !WS_THICKFRAME;
+            }
+            SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+            SetWindowPos(
+                hwnd,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+        }
     }
 
     pub fn visible_hwnd_origins() -> Vec<(i32, i32)> {

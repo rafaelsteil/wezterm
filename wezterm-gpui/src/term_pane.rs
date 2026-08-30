@@ -22,12 +22,15 @@ use wezterm_term::color::ColorPalette;
 use wezterm_term::input::{
     MouseButton as TermMouseButton, MouseEvent as TermMouseEvent, MouseEventKind,
 };
-use wezterm_term::{Alert, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
+use wezterm_term::{Alert, Hyperlink, KeyCode, KeyModifiers, Line, StableRowIndex, TerminalSize};
 
 use crate::find::{
     alphabet, find_in_lines, pick_current_hit, quick_select_matches, HintMatch, SearchHit,
 };
 use crate::glyph_paint::{GlyphPainter, TermPaint};
+use crate::hover::{
+    click_opens_hovered_link, hover_underline_spans, same_hyperlink, LinkHoverSpan,
+};
 use crate::shells::ShellProfile;
 
 const DEFAULT_ROWS: usize = 24;
@@ -79,6 +82,8 @@ pub struct TermPane {
     focused: bool,
     /// Last hovered/clicked cell. Palette OpenLinkAtMouseCursor (044).
     last_mouse: Option<CellPos>,
+    /// Hovered OSC-8 / implicit URL. Underline + PointingHand (034 leftover / 058).
+    current_highlight: Option<Arc<Hyperlink>>,
     /// Palette ActivateCopyMode: keyboard selection, keys do not go to the PTY.
     copy_mode: Option<CopyMode>,
     /// Vim-style Search (050). Highlights live here; the bar is AppShell.
@@ -214,6 +219,7 @@ impl TermPane {
             profile,
             focused: true,
             last_mouse: None,
+            current_highlight: None,
             copy_mode: None,
             search: None,
             quick_select: None,
@@ -400,6 +406,43 @@ impl TermPane {
         if let Some(hit) = self.hit_cell(pos, bounds, true) {
             self.last_mouse = Some(hit.pos);
         }
+    }
+
+    /// wezterm-gui `current_highlight`: apply implicit URL rules, store the
+    /// cell's `Arc<Hyperlink>`. Returns true when the hovered link changed.
+    fn update_hover(&mut self, pos: Point<Pixels>, bounds: Bounds<Pixels>) -> bool {
+        let next = match &self.live {
+            Ok(live) => self
+                .hit_cell(pos, bounds, false)
+                .and_then(|hit| hyperlink_arc_at(&*live.pane, hit.pos)),
+            Err(_) => None,
+        };
+        if same_hyperlink(self.current_highlight.as_ref(), next.as_ref()) {
+            false
+        } else {
+            self.current_highlight = next;
+            true
+        }
+    }
+
+    fn clear_hover(&mut self) -> bool {
+        if self.current_highlight.is_none() {
+            false
+        } else {
+            self.current_highlight = None;
+            true
+        }
+    }
+
+    pub fn hovering_link(&self) -> bool {
+        self.current_highlight.is_some()
+    }
+
+    pub fn hover_link_spans(&self) -> Vec<LinkHoverSpan> {
+        hover_underline_spans(
+            &self.visible_lines().0,
+            self.current_highlight.as_ref(),
+        )
     }
 
     pub fn on_scroll_wheel(&mut self, event: &ScrollWheelEvent) {
@@ -686,6 +729,15 @@ impl TermPane {
                 current: i == search.current,
             })
             .collect()
+    }
+
+    pub fn hover_underline_color(&self) -> u32 {
+        let pal = match &self.live {
+            Ok(live) => live.pane.palette(),
+            Err(_) => ColorPalette::default(),
+        };
+        let (r, g, b, _) = pal.foreground.as_rgba_u8();
+        u32::from_be_bytes([0, r, g, b])
     }
 
     pub fn enter_quick_select(&mut self) {
@@ -1117,17 +1169,41 @@ impl TermPane {
             }
             return;
         }
-        if lookup_lua_mouse(
+        let lua = lookup_lua_mouse(
             MouseEventTrigger::Up {
                 streak: 1,
                 button: TermMouseButton::Left,
             },
             modifiers,
-        ) == Some(KeyAssignment::OpenLinkAtMouseCursor)
-        {
-            if let Some(hit) = self.hit_cell(pos, bounds, true) {
-                self.open_link_at(hit);
-            }
+        );
+        let lua_opens = matches!(lua, Some(KeyAssignment::OpenLinkAtMouseCursor));
+        let lua_complete_or_open = matches!(
+            lua,
+            Some(KeyAssignment::CompleteSelectionOrOpenLinkAtMouseCursor(_))
+        );
+        let lua_nop = matches!(lua, Some(KeyAssignment::Nop));
+        let default_blocked = modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+            || config::configuration().disable_default_mouse_bindings;
+        if click_opens_hovered_link(
+            lua_opens,
+            lua_complete_or_open,
+            lua_nop,
+            self.selection.range.is_some(),
+            default_blocked,
+        ) {
+            self.open_hovered_or_hit_link(pos, bounds);
+        }
+    }
+
+    fn open_hovered_or_hit_link(&self, pos: Point<Pixels>, bounds: Bounds<Pixels>) {
+        if let Some(link) = &self.current_highlight {
+            wezterm_open_url::open_url(link.uri());
+            return;
+        }
+        if let Some(hit) = self.hit_cell(pos, bounds, true) {
+            self.open_link_at(hit);
         }
     }
 
@@ -1849,10 +1925,14 @@ fn lookup_lua_mouse(trigger: MouseEventTrigger, gpui_mods: &Modifiers) -> Option
 }
 
 fn hyperlink_at(pane: &dyn Pane, pos: CellPos) -> Option<String> {
+    hyperlink_arc_at(pane, pos).map(|h| h.uri().to_string())
+}
+
+fn hyperlink_arc_at(pane: &dyn Pane, pos: CellPos) -> Option<Arc<Hyperlink>> {
     let rules = &config::configuration().hyperlink_rules;
     pane.apply_hyperlinks(pos.y..pos.y + 1, rules);
     struct FindLink {
-        uri: Option<String>,
+        link: Option<Arc<Hyperlink>>,
         row: StableRowIndex,
         col: usize,
     }
@@ -1863,18 +1943,18 @@ fn hyperlink_at(pane: &dyn Pane, pos: CellPos) -> Option<String> {
             }
             if let Some(line) = lines.first() {
                 if let Some(cell) = line.get_cell(self.col) {
-                    self.uri = cell.attrs().hyperlink().map(|h| h.uri().to_string());
+                    self.link = cell.attrs().hyperlink().cloned();
                 }
             }
         }
     }
     let mut find = FindLink {
-        uri: None,
+        link: None,
         row: pos.y,
         col: pos.x,
     };
     pane.with_lines_mut(pos.y..pos.y + 1, &mut find);
-    find.uri
+    find.link
 }
 
 fn dpi_from_scale(scale: f32) -> u32 {
@@ -2142,15 +2222,26 @@ impl Element for TermScreen {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.set_cursor_style(CursorStyle::IBeam, hitbox);
+        let hovering_link = self.term.read(cx).hovering_link();
+        window.set_cursor_style(
+            if hovering_link {
+                CursorStyle::PointingHand
+            } else {
+                CursorStyle::IBeam
+            },
+            hitbox,
+        );
         style.paint(bounds, window, cx, |window, cx| {
-            let (paint, highlights, (cw, ch)) = self.term.update(cx, |term, _| {
-                (
-                    term.try_glyph_paint(),
-                    term.search_highlights(),
-                    term.cell_px(),
-                )
-            });
+            let (paint, highlights, link_spans, link_fg, (cw, ch)) =
+                self.term.update(cx, |term, _| {
+                    (
+                        term.try_glyph_paint(),
+                        term.search_highlights(),
+                        term.hover_link_spans(),
+                        term.hover_underline_color(),
+                        term.cell_px(),
+                    )
+                });
             if let Some(paint) = paint {
                 crate::glyph_paint::paint_term(window, bounds, &paint);
             } else {
@@ -2172,6 +2263,18 @@ impl Element for TermScreen {
                     size: size(px(hit.len as f32 * cw), px(ch)),
                 };
                 window.paint_quad(fill(rect, color));
+            }
+            let underline_h = (ch * 0.08).max(1.0);
+            let underline_y = (ch - underline_h - 1.0).max(0.0);
+            for span in link_spans {
+                let rect = Bounds {
+                    origin: point(
+                        px(origin_x + span.col as f32 * cw),
+                        px(origin_y + span.vis_row as f32 * ch + underline_y),
+                    ),
+                    size: size(px(span.len as f32 * cw), px(underline_h)),
+                };
+                window.paint_quad(fill(rect, rgb(link_fg)));
             }
         });
 
@@ -2212,13 +2315,19 @@ impl Element for TermScreen {
                     return;
                 }
                 if !hitbox.is_hovered(window) {
+                    entity.update(cx, |term, cx| {
+                        if term.clear_hover() {
+                            cx.notify();
+                        }
+                    });
                     return;
                 }
                 entity.update(cx, |term, cx| {
                     term.remember_mouse(event.position, bounds);
-                    if event.pressed_button == Some(MouseButton::Left)
-                        && term.on_mouse_drag(event.position, bounds, &event.modifiers)
-                    {
+                    let hover_changed = term.update_hover(event.position, bounds);
+                    let drag_changed = event.pressed_button == Some(MouseButton::Left)
+                        && term.on_mouse_drag(event.position, bounds, &event.modifiers);
+                    if hover_changed || drag_changed {
                         cx.notify();
                     }
                 });

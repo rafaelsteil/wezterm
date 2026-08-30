@@ -1,0 +1,7 @@
+{
+  "id": "062-window-decorations",
+  "at": "2026-08-30T03:20:00Z",
+  "decision": "honor_window_decorations_native_vs_integrated_gpui_chrome",
+  "rationale": "034 marked window_decorations already_matched because 028 TitleBar always had min/max/close. That ignored TITLE vs INTEGRATED_BUTTONS vs RESIZE/NONE. Map lua flags to WindowOptions (native caption vs appears_transparent, is_resizable) and paint: native TITLE has no GPUI TitleBar; INTEGRATED_BUTTONS puts TabBar inside TitleBar; RESIZE/NONE have no window buttons. Left alignment / custom button list / macOS flags stay parked. Do not start 026.",
+  "record": "docs/plans/062-window-decorations.md"
+}

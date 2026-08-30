@@ -2,22 +2,7 @@
 
 use gpui::*;
 use gpui_component::*;
-use wezterm_gpui::{bind_keys, AppShell, HelloWorld};
-
-fn window_options(cx: &App) -> WindowOptions {
-    WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-            None,
-            size(px(980.), px(640.)),
-            cx,
-        ))),
-        titlebar: Some(TitlebarOptions {
-            title: Some("WezTerm GPUI".into()),
-            ..TitleBar::title_bar_options()
-        }),
-        ..Default::default()
-    }
-}
+use wezterm_gpui::{app_window_options, bind_keys, AppShell, HelloWorld};
 
 fn hello_window_options() -> WindowOptions {
     WindowOptions {
@@ -49,7 +34,7 @@ fn main() {
                 })
                 .detach();
             } else {
-                let opts = window_options(cx);
+                let opts = app_window_options(cx);
                 cx.spawn(async move |cx| {
                     cx.open_window(opts, |window, cx| {
                         let view = cx.new(|cx| AppShell::new(window, cx));

@@ -8,11 +8,13 @@ Visual leftovers vs wezterm-gui while waiting for the next user bug list (016 / 
 - **Geometry box-draw:** U+2500–259F rasterized into the row bitmap (`src/boxdraw.rs`). Honors `custom_block_glyphs` / `anti_alias_custom_block_glyphs`. Those codepoints are replaced with spaces before HarfBuzz so the font’s box glyphs (wrong advance, gaps) are not used.
 - Thickness snaps to device pixels so `│`/`─` tile across cells.
 
-## Out
+## Out (not 023 leftovers)
 
-- Powerline triangles (U+E0B0…) — later if nerd-font prompts look wrong
+- Powerline triangles (U+E0B0…) — later slice if nerd-font prompts look wrong
 - wezterm-gui `customglyph.rs` / tiny-skia (do not path-dep `wezterm-gui`)
 - GPUI `Path` / `paint_quad` for box-draw (paint is still CPU line sprites)
 - GPUI `text_system`, palette, ConPTY junk, window/ cutover
+
+**Finished** 2026-08-29. Box-draw **user-ok** (`echo` / `tree`). Tight per-cell clip stays reverted (025). Do not reopen 023 for powerline or padded clip unless asked.
 
 Record: `docs/decisions/023-geometry-boxdraw-and-cell-clip.json`.

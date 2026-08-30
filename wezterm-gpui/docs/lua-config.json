@@ -1,22 +1,22 @@
 {
   "id": "wezterm-gpui-lua-config",
   "schema_version": 1,
-  "updated": "2026-08-29T02:55:00Z",
+  "updated": "2026-08-30T03:40:00Z",
   "source_file": "C:\\Users\\rafael\\.wezterm.lua",
   "note": "Per-key tracker for GPUI lua honor. STATE.json points here; do not duplicate long key lists in HANDOFF. Append keys; never delete rows. user_try: ok | partial | not_tested | no_visible_change | n_a. gpui: honored | already_matched | partial | not_wired | parked.",
   "stats": {
-    "keys": 28,
-    "user_ok": 18,
-    "partial": 1,
+    "keys": 30,
+    "user_ok": 25,
+    "partial": 0,
     "not_tested": 1,
-    "no_visible_change": 3,
-    "not_wired_or_parked": 5
+    "no_visible_change": 1,
+    "not_wired_or_parked": 3
   },
   "backlog": [
     {
       "id": "hyperlink_hover_highlight",
       "key": "mouse_bindings OpenLinkAtMouseCursor",
-      "detail": "Ctrl+click opens the URL (user-ok 2026-08-27) but does not underline / hand-cursor the link on hover the way wezterm-gui does. Do not start unless asked.",
+      "detail": "058 hover underline + PointingHand **user-ok** 2026-08-29. 059 plain click **user-ok**. 060 disable_default_mouse_bindings **user-ok** (plain click does not open; Ctrl+click still opens).",
       "blocked_by": []
     },
     {
@@ -34,7 +34,13 @@
     {
       "id": "command_palette_font",
       "key": "command_palette_font / command_palette_font_size",
-      "detail": "Palette listing is 036; fonts still out. Do not start unless asked.",
+      "detail": "061: honor lua command_palette_font (Segoe UI) + command_palette_font_size (12pt). **User-ok** 2026-08-29 (“confirmed as working”).",
+      "blocked_by": []
+    },
+    {
+      "id": "window_decorations",
+      "key": "window_decorations",
+      "detail": "062: TITLE native caption vs INTEGRATED_BUTTONS in TitleBar+TabBar vs RESIZE/NONE. **User-ok** 2026-08-29 (“confirmed as working”). Left alignment / custom buttons / macOS flags parked.",
       "blocked_by": []
     },
     {
@@ -119,21 +125,21 @@
       "key": "window_decorations",
       "in_user_lua": true,
       "user_value": "INTEGRATED_BUTTONS|RESIZE",
-      "slice": "028+034",
-      "gpui": "already_matched",
-      "user_try": "no_visible_change",
-      "at": "2026-08-27T22:05:00Z",
-      "notes": "028 TitleBar already Hide/Maximize/Close. User did not notice a change — expected. Includes integrated_title_button_*."
+      "slice": "062",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-30T03:40:00Z",
+      "notes": "**User-ok** 2026-08-29 (“confirmed as working”). Native TITLE (WS_CAPTION after create) vs INTEGRATED_BUTTONS (TabBar inside TitleBar) vs RESIZE/NONE. Tab-bar empty space always drags."
     },
     {
       "key": "integrated_title_button_alignment",
       "in_user_lua": true,
       "user_value": "Right",
-      "slice": "028",
-      "gpui": "already_matched",
-      "user_try": "no_visible_change",
-      "at": "2026-08-27T22:05:00Z",
-      "notes": "Rolled into window_decorations row."
+      "slice": "062",
+      "gpui": "partial",
+      "user_try": "ok",
+      "at": "2026-08-30T03:40:00Z",
+      "notes": "**User-ok** 2026-08-29 for Right (TitleBar WindowControls). Left parked. Style/color/custom integrated_title_buttons parked."
     },
     {
       "key": "show_tab_index_in_tab_bar",
@@ -180,10 +186,10 @@
       "in_user_lua": true,
       "user_value": "CTRL + Left Up → OpenLinkAtMouseCursor",
       "slice": "034",
-      "gpui": "partial",
-      "user_try": "partial",
-      "at": "2026-08-27T22:05:00Z",
-      "notes": "Open works. Hover underline / hand cursor missing (backlog hyperlink_hover_highlight). Do not start unless asked."
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-29T21:20:00Z",
+      "notes": "Open works (user-ok 2026-08-27). 058 hover underline + PointingHand **user-ok** 2026-08-29. 059 plain click opens when defaults on. 060: flag must skip that default."
     },
     {
       "key": "mouse_bindings.ctrl_down_nop",
@@ -229,21 +235,21 @@
       "key": "command_palette_font_size",
       "in_user_lua": true,
       "user_value": "12.0",
-      "slice": null,
-      "gpui": "parked",
-      "user_try": "n_a",
-      "at": "2026-08-27T22:05:00Z",
-      "notes": "Palette parked."
+      "slice": "061",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-30T02:57:00Z",
+      "notes": "061 **user-ok** 2026-08-29: points → CSS px (12pt = 16px). Command Palette overlay only."
     },
     {
       "key": "command_palette_font",
       "in_user_lua": true,
       "user_value": "Segoe UI",
-      "slice": null,
-      "gpui": "parked",
-      "user_try": "n_a",
-      "at": "2026-08-27T22:05:00Z",
-      "notes": "Palette parked."
+      "slice": "061",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-30T02:57:00Z",
+      "notes": "061 **user-ok** 2026-08-29: first family from wezterm.font (Segoe UI). Command Palette overlay only."
     },
     {
       "key": "default_prog",
@@ -324,6 +330,26 @@
       "user_try": "ok",
       "at": "2026-08-28T18:20:00Z",
       "notes": "mux_host register_configured_domains. Empty lua wsl_domains={} disables discovery (same as wezterm-gui). **User-ok** 2026-08-28 (chevron / palette / launcher)."
+    },
+    {
+      "key": "mouse_bindings.default_complete_or_open_link",
+      "in_user_lua": false,
+      "user_value": "wezterm-gui default InputMap: unmodified/SHIFT Left Up → CompleteSelectionOrOpenLinkAtMouseCursor",
+      "slice": "059",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-29T21:40:00Z",
+      "notes": "User-ok 2026-08-29: plain click opens when defaults are on. 060 gates this on disable_default_mouse_bindings. Copy-on-select still Ctrl+Shift+C."
+    },
+    {
+      "key": "disable_default_mouse_bindings",
+      "in_user_lua": true,
+      "user_value": "true (user-tested 2026-08-29; GPUI still opened until 060)",
+      "slice": "060",
+      "gpui": "honored",
+      "user_try": "ok",
+      "at": "2026-08-29T23:10:00Z",
+      "notes": "**User-ok** 2026-08-29: with the flag, hover still underlines; plain click does not open; Ctrl+click still opens. 021 selection stays hardcoded."
     }
   ]
 }

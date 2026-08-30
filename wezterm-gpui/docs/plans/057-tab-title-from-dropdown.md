@@ -14,4 +14,6 @@ Stay parked: 026, unix Attach, lua REPL, `window/` cutover, `format-tab-title` e
 
 Needs user-try: Plus / chevron / WSL rows — tab text matches the menu.
 
+**User-ok** 2026-08-29.
+
 Record: `docs/decisions/057-tab-title-from-dropdown.json`.

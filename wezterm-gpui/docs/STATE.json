@@ -1,13 +1,13 @@
 {
   "id": "wezterm-gpui-migration",
   "schema_version": 1,
-  "updated": "2026-08-29T20:50:00Z",
+  "updated": "2026-08-30T03:40:00Z",
   "status": "in_progress",
   "current_phase": "poc-term-render",
   "next": [
     {
       "id": "term-render-visual-leftovers",
-      "action": "057: new-tab titles should match the chevron (Command Prompt / WSL:…). 049 catalog still needs a try if not done. Come back later: 026 hang, 034 hover, unix Attach, lua REPL. Do not start 026. Do not start window/ cutover. Do not rewrite splits onto Mux::split_pane.",
+      "action": "049 catalog still needs a try. 062 window_decorations **user-ok**. 061 command_palette_font **user-ok**. Come back later: 026 hang, unix Attach, lua REPL. Do not start 026. Do not start window/ cutover.",
       "blocked_by": []
     },
     {
@@ -60,7 +60,7 @@
     {
       "id": "poc-term-render",
       "status": "in_progress",
-      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default; 050 palette-only. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **user-ok**; tight cell clip reverted (025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **user-ok** (gap closed after 030). 030 integer cell grid **user-ok**. Cursor at cursor.x **031 user-ok**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok** (052: this HWND only when others exist). 034 lua second slice **user-ok** except hover highlight (backlog). Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells **user-ok**. 040 splits **user-ok**. 041 inactive HSB **user-ok**. 042 palette selection invert **user-ok**. 043 palette ↑↓ keep selection **user-ok**. 044 palette core/tab chrome **user-ok**. 045 palette ↑↓ scroll-into-view **user-ok**. 046 palette pane dir/rotate/zoom **user-ok**. 047 palette window chrome **user-ok**. 048 palette AdjustPaneSize **user-ok**. 049 palette catalog complete (89 wired / 0 listed), needs user-try. 050 overlay parity + scrollbar **user-ok**. 051 cascade/focus/badge **user-ok**. 052 close-this-window + search copy **user-ok**. 053 WSL/exec mux domains **user-ok**. 054 Tab → PTY completion **user-ok**. 055 mux workspaces **user-ok**. 056 search overlay no PTY shrink **user-ok**. 057 tab title from dropdown **wired, needs user-try**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
+      "notes": "Decision 016: rendering quality is the POC goal. 017 line sprites user-ok. 019 gpui-fps HUD wired, off by default; 050 palette-only. 020 lua font/scheme **user-ok**. 021 selection/copy/paste **user-ok**. 022 click/focus **user-ok**. 023 box-draw **finished** (tight clip reverted 025). 025 4K 120dpi **user-ok**. Monitor-move hang **backlog (026)**. 027/028 **user-ok**. 029 cell_span **user-ok** (gap closed after 030). 030 integer cell grid **user-ok**. Cursor at cursor.x **031 user-ok**. 032 tab close/exit keys **user: better now**. 033 last-tab `exit` quits **user-ok** (052: this HWND only when others exist). 034 lua second slice **user-ok**; 058 hover **user-ok**. 059 plain click **user-ok**. 060 disable_default_mouse_bindings **user-ok**. Per-key lua: docs/lua-config.json (035). 036 palette listing + launcher matrix. 037 dialog cancel focus restore **user-ok**. 038 dialog layer **user-ok**. 039 skip close confirm for skip-listed shells **user-ok**. 040 splits **user-ok**. 041 inactive HSB **user-ok**. 042 palette selection invert **user-ok**. 043 palette ↑↓ keep selection **user-ok**. 044 palette core/tab chrome **user-ok**. 045 palette ↑↓ scroll-into-view **user-ok**. 046 palette pane dir/rotate/zoom **user-ok**. 047 palette window chrome **user-ok**. 048 palette AdjustPaneSize **user-ok**. 049 palette catalog complete (89 wired / 0 listed), needs user-try. 050 overlay parity + scrollbar **user-ok**. 051 cascade/focus/badge **user-ok**. 052 close-this-window + search copy **user-ok**. 053 WSL/exec mux domains **user-ok**. 054 Tab → PTY completion **user-ok**. 055 mux workspaces **user-ok**. 056 search overlay no PTY shrink **user-ok**. 057 tab title from dropdown **user-ok**. 058 hyperlink hover **user-ok**. 059 plain click **user-ok**. 060 disable_default_mouse_bindings **user-ok**. ConPTY junk later (018). See docs/reference/rendering-quality.md."
     },
     {
       "id": "live-pty",
@@ -115,7 +115,7 @@
     {
       "id": "boxdraw-and-cell-clip",
       "status": "done",
-      "notes": "023: U+2500–259F CPU geometry. Tight cell clip reverted in 025. echo/tree **user-ok**. Powerline out."
+      "notes": "023 finished: U+2500–259F CPU geometry **user-ok**. Tight cell clip reverted in 025 (intentional). Powerline is a later slice if nerd-font prompts look wrong, not 023 leftover."
     },
     {
       "id": "hi-dpi-line-sprite-dest",
@@ -170,7 +170,7 @@
     {
       "id": "lua-config-second-slice",
       "status": "done",
-      "notes": "034: remaining keys from ~/.wezterm.lua. **User-ok** 2026-08-27: tab_max_width, show_tab_index, hide-if-one, last-active-on-close, Ctrl+down Nop, Ctrl+wheel. Ctrl+click **opens** but no hover highlight (backlog). Fancy tab bar / decorations: no visible change (already matched). adjust_window_size not tested. Matrix: docs/lua-config.json."
+      "notes": "034: remaining keys from ~/.wezterm.lua. **User-ok** 2026-08-27: tab_max_width, show_tab_index, hide-if-one, last-active-on-close, Ctrl+down Nop, Ctrl+wheel, Ctrl+click opens. 058 hover underline + hand cursor **wired, needs user-try**. Fancy tab bar / decorations: no visible change (already matched). adjust_window_size not tested. Matrix: docs/lua-config.json."
     },
     {
       "id": "command-palette-launcher-matrix",
@@ -180,7 +180,7 @@
     {
       "id": "dialog-cancel-restores-term-focus",
       "status": "done",
-      "notes": "037: Ctrl+Q / tab X cancel left typing dead (032 only restored after confirm-close OK). Focus AppShell before dialog; on_ok+on_cancel request_terminal_focus; 400ms spawn_in retry. Superseded visually by 038 (dialog was never painted). Keep restore after dismiss."
+      "notes": "037: Ctrl+Q / tab X cancel left typing dead (032 only restored after confirm-close OK). Focus AppShell before dialog; on_ok+on_cancel request_terminal_focus; 400ms spawn_in retry. **User-ok** 2026-08-29."
     },
     {
       "id": "mount-root-dialog-layer",
@@ -280,7 +280,32 @@
     {
       "id": "tab-title-from-dropdown",
       "status": "done",
-      "notes": "057: TermPane::title used LocalPane::get_title (cmd.exe/wsl.exe). Tab chrome now uses profile.label (dropdown). Rename tab override stays. cargo check green; cargo test --lib shells. Needs user-try."
+      "notes": "057: TermPane::title used LocalPane::get_title (cmd.exe/wsl.exe). Tab chrome now uses profile.label (dropdown). Rename tab override stays. **User-ok** 2026-08-29."
+    },
+    {
+      "id": "hyperlink-hover-highlight",
+      "status": "done",
+      "notes": "058: 034 leftover. current_highlight Arc ptr_eq; overlay fg underline + PointingHand. **User-ok** 2026-08-29."
+    },
+    {
+      "id": "plain-click-opens-link",
+      "status": "done",
+      "notes": "059: user lua Ctrl+click does not disable wezterm-gui default CompleteSelectionOrOpenLinkAtMouseCursor. Plain left-up with no selection opens current_highlight. cargo test --lib hover_ . **User-ok** 2026-08-29 (opens when defaults on)."
+    },
+    {
+      "id": "disable-default-mouse-bindings",
+      "status": "done",
+      "notes": "060: 059 applied default open-on-click even with disable_default_mouse_bindings. Gate default_blocked on that flag; lua Ctrl+click still opens. cargo test --lib hover:: . **User-ok** 2026-08-29 (“confirmed as working”)."
+    },
+    {
+      "id": "command-palette-font",
+      "status": "done",
+      "notes": "061: lua command_palette_font (Segoe UI) + command_palette_font_size (12pt) on Command Palette overlay. Points → CSS px (96/72). cargo test --lib lua_ui:: . **User-ok** 2026-08-29 (“confirmed as working”)."
+    },
+    {
+      "id": "window-decorations",
+      "status": "done",
+      "notes": "062: honor lua window_decorations. Native TITLE (`WS_CAPTION` after create) vs INTEGRATED_BUTTONS (TabBar inside TitleBar) vs RESIZE/NONE. Tab-bar empty space always drags. cargo test --lib lua_ui:: 9/9. **User-ok** 2026-08-29 (“confirmed as working”)."
     },
     {
       "id": "delete-old-ui",
@@ -646,6 +671,36 @@
       "decision": "tab_title_is_dropdown_profile_label_not_pty_basename",
       "rationale": "User: new shell/domain tabs should show the chevron labels (Command Prompt, Windows PowerShell, PowerShell, WSL:…). LocalPane::get_title spices default wezterm into cmd.exe/wsl.exe. Use profile.label. Rename tab override stays. Do not start 026 or window/ cutover.",
       "record": "docs/decisions/057-tab-title-from-dropdown.json"
+    },
+    {
+      "at": "2026-08-29T21:10:00Z",
+      "decision": "hover_underline_and_pointing_hand_like_wezterm_gui",
+      "rationale": "User asked to finish 034: Ctrl+click already opens; hover did not underline or change the cursor. Track current_highlight (Arc ptr_eq) on mouse move, overlay a fg underline on matching cells, PointingHand while hovered. Do not bake into 017 line sprites. Do not start 026.",
+      "record": "docs/decisions/058-hyperlink-hover-highlight.json"
+    },
+    {
+      "at": "2026-08-29T21:20:00Z",
+      "decision": "honor_wezterm_gui_default_complete_or_open_link_on_plain_click",
+      "rationale": "User: 058 hover OK, but wezterm opens links without Ctrl+click. User lua only adds Ctrl+click; default InputMap still binds unmodified Left Up to CompleteSelectionOrOpenLinkAtMouseCursor. Honor that when there is no selection. Do not start 026.",
+      "record": "docs/decisions/059-plain-click-opens-link.json"
+    },
+    {
+      "at": "2026-08-29T21:40:00Z",
+      "decision": "honor_disable_default_mouse_bindings_for_plain_click_open",
+      "rationale": "User: with disable_default_mouse_bindings = true, wezterm-gui only highlights a URL; GPUI still opened on a plain click. 059 applied the default CompleteSelectionOrOpenLinkAtMouseCursor unconditionally. Gate that default on the flag; keep user lua Ctrl+click OpenLinkAtMouseCursor. Do not start 026.",
+      "record": "docs/decisions/060-disable-default-mouse-bindings.json"
+    },
+    {
+      "at": "2026-08-30T02:50:00Z",
+      "decision": "honor_command_palette_font_and_size_on_gpui_palette",
+      "rationale": "User lua sets command_palette_font Segoe UI and command_palette_font_size 12. GPUI palette used theme font + hardcoded px. Apply lua family (else window_frame.font) and point size as CSS px (96/72). Do not start 026. Picker/charselect fonts stay parked.",
+      "record": "docs/decisions/061-command-palette-font.json"
+    },
+    {
+      "at": "2026-08-30T03:20:00Z",
+      "decision": "honor_window_decorations_native_vs_integrated_gpui_chrome",
+      "rationale": "034 marked window_decorations already_matched because 028 TitleBar always had min/max/close. That ignored TITLE vs INTEGRATED_BUTTONS vs RESIZE/NONE. Map lua flags to WindowOptions and paint: native TITLE has no GPUI TitleBar; INTEGRATED_BUTTONS puts TabBar inside TitleBar; RESIZE/NONE have no window buttons. Left alignment / custom button list / macOS flags stay parked. Do not start 026.",
+      "record": "docs/decisions/062-window-decorations.json"
     }
   ],
   "constraints": [
@@ -719,13 +774,43 @@
       "status": "poc_user_ok",
       "legacy": "config::common_init + ~/.wezterm.lua",
       "gpui": "wezterm-gpui/src/mux_host.rs + glyph_paint.rs + shell.rs",
-      "e2e": "user-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui (“works like a charm”); still cmd.exe. 034 chrome/mouse user-ok except hover highlight. Per-key: docs/lua-config.json."
+      "e2e": "user-tried 2026-08-27: Cascadia 11pt + Dracula match wezterm-gui (“works like a charm”); still cmd.exe. 034 chrome/mouse user-ok; 058 hover **user-ok**; 059 plain click **user-ok**; 060 disable_default_mouse_bindings **user-ok**. Per-key: docs/lua-config.json."
     },
     "lua_config_second_slice": {
       "status": "poc_user_ok",
       "legacy": "wezterm-gui tabbar.rs + inputmap.rs mouse_bindings + termwindow OpenLinkAtMouseCursor",
       "gpui": "wezterm-gpui/src/lua_ui.rs + shell.rs tab chrome; term_pane.rs lookup_lua_mouse + wezterm-open-url",
-      "e2e": "user-tried 2026-08-27: tab index / hide-if-one / max width / last-active / Ctrl+down / Ctrl+wheel **ok**. Ctrl+click **opens**, no hover highlight (backlog). Fancy tab bar + decorations: no visible change (already matched). adjust_window_size not tested."
+      "e2e": "user-tried 2026-08-27: tab index / hide-if-one / max width / last-active / Ctrl+down / Ctrl+wheel **ok**. Ctrl+click **opens**. 058 hover **user-ok**. 059 plain click **user-ok**. 060 disable_default_mouse_bindings **user-ok**. 061 palette font **user-ok**. 062 window_decorations **user-ok**. Fancy tab bar: no visible change (already matched). adjust_window_size not tested."
+    },
+    "hyperlink_hover_highlight": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui termwindow current_highlight + Hand cursor + underline sprite",
+      "gpui": "wezterm-gpui/src/hover.rs + term_pane.rs overlay underline + CursorStyle::PointingHand",
+      "e2e": "058 **user-ok** 2026-08-29. Hover URL underline + hand cursor."
+    },
+    "plain_click_opens_link": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-gui inputmap CompleteSelectionOrOpenLinkAtMouseCursor on unmodified Left Up",
+      "gpui": "wezterm-gpui/src/hover.rs click_opens_hovered_link + term_pane.rs on_mouse_up",
+      "e2e": "059 **user-ok** 2026-08-29. Plain click with no selection opens current_highlight when defaults are on."
+    },
+    "disable_default_mouse_bindings": {
+      "status": "poc_user_ok",
+      "legacy": "config.disable_default_mouse_bindings skips default InputMap mouse chords",
+      "gpui": "wezterm-gpui/src/term_pane.rs on_mouse_up default_blocked includes the flag",
+      "e2e": "060 **user-ok** 2026-08-29. With the flag, hover underlines; plain click does not open; Ctrl+click still opens."
+    },
+    "command_palette_font": {
+      "status": "poc_user_ok",
+      "legacy": "wezterm-font command_palette_font + command_palette_font_size (points)",
+      "gpui": "wezterm-gpui/src/lua_ui.rs resolve + palette.rs Label/Input font_family/text_size",
+      "e2e": "061 **user-ok** 2026-08-29. Segoe UI 12pt on Ctrl+Shift+P (“confirmed as working”)."
+    },
+    "window_decorations": {
+      "status": "poc_user_ok",
+      "legacy": "window/ Windows no_native_title_bar + wezterm-gui tabbar integrated_title_buttons",
+      "gpui": "wezterm-gpui/src/lua_ui.rs window_chrome + shell.rs app_window_options + win_zorder WS_CAPTION + TitleBar wrapping TabBar",
+      "e2e": "062 **user-ok** 2026-08-29 (“confirmed as working”). TITLE native caption; INTEGRATED_BUTTONS one chrome row; NONE tab-bar drag."
     },
     "selection_copy_paste": {
       "status": "poc_user_ok",
@@ -734,10 +819,10 @@
       "e2e": "user-tried 2026-08-27: drag/copy/paste ok; wrapped triple-click ok after get_logical_lines. 022 click/focus **user-ok** (both bugs fixed)."
     },
     "boxdraw_and_cell_clip": {
-      "status": "poc_user_ok",
+      "status": "poc_finished",
       "legacy": "wezterm-gui/src/customglyph.rs + screen_line clip strips",
       "gpui": "wezterm-gpui/src/boxdraw.rs + glyph_paint.rs (row-bitmap clip; tight cell clip reverted 025)",
-      "e2e": "user-tried 2026-08-27: echo/tree box-draw **user-ok**. Powerline out."
+      "e2e": "023 **finished** 2026-08-29. echo/tree box-draw **user-ok**. Tight clip stays reverted (025). Powerline is not 023."
     },
     "hi_dpi_line_sprite_dest": {
       "status": "poc_not_user_ok",
@@ -782,10 +867,10 @@
       "e2e": "user-ok 2026-08-29 (“Fixed”). vim Ctrl+Shift+F: no first-line jump, no duplicate on type, close redraws without an extra key."
     },
     "tab_title_from_dropdown": {
-      "status": "wired_needs_user_try",
+      "status": "poc_user_ok",
       "legacy": "wezterm-gui tabbar pane.title / format-tab-title (process basename or OSC)",
       "gpui": "wezterm-gpui/src/term_pane.rs title() uses profile.label; ShellTab.title_override for Rename tab",
-      "e2e": "057 wired 2026-08-29. Needs user-try: Plus/chevron/WSL tab text matches the menu."
+      "e2e": "057 **user-ok** 2026-08-29. Plus/chevron/WSL tab text matches the menu."
     },
     "gpui_component_icon_assets": {
       "status": "poc_user_ok",
@@ -824,10 +909,10 @@
       "e2e": "user-ok 2026-08-27 (“works great”) for last HWND. 052 user-ok 2026-08-28: last tab of a non-last window leaves other HWNDs up."
     },
     "dialog_cancel_restores_term_focus": {
-      "status": "poc_needs_user_try",
+      "status": "poc_user_ok",
       "legacy": "wezterm-gui confirm overlay; window focus stays on term after cancel",
       "gpui": "wezterm-gpui/src/confirm.rs on_ok+on_cancel → shell.rs request_terminal_focus",
-      "e2e": "037 wired; user 2026-08-27: no dialog was shown (038)."
+      "e2e": "037 **user-ok** 2026-08-29. Cancel / Ctrl+Q dismiss restores typing."
     },
     "mount_root_dialog_layer": {
       "status": "poc_needs_user_try",
@@ -1387,7 +1472,52 @@
     {
       "at": "2026-08-29T20:50:00Z",
       "id": "tab_title_was_pty_basename",
-      "detail": "User 2026-08-29: new shell/domain tabs should use the chevron strings (Command Prompt, Windows PowerShell, PowerShell, WSL:MuleLinux, …). TermPane::title used LocalPane::get_title, which replaces default wezterm with cmd.exe/wsl.exe. 057: title() returns fallback_title (profile.label). Rename tab override stays. cargo check green; cargo test --lib shells. Needs user-try."
+      "detail": "User 2026-08-29: new shell/domain tabs should use the chevron strings (Command Prompt, Windows PowerShell, PowerShell, WSL:MuleLinux, …). TermPane::title used LocalPane::get_title, which replaces default wezterm with cmd.exe/wsl.exe. 057: title() returns fallback_title (profile.label). Rename tab override stays. **User-ok** 2026-08-29."
+    },
+    {
+      "at": "2026-08-29T21:10:00Z",
+      "id": "user_ok_037_057_wire_058_hover",
+      "detail": "User 2026-08-29: 037 dialog cancel/Ctrl+Q focus restore Fixed; 057 tab titles Fixed. 058: hover underline + PointingHand (034 leftover). current_highlight Arc ptr_eq; overlay fg underline on matching cells; IBeam otherwise. cargo check green; cargo test --lib hover_ 3/3. **User-ok** hover 2026-08-29. Do not start 026."
+    },
+    {
+      "at": "2026-08-29T21:20:00Z",
+      "id": "plain_click_must_open_link_like_wezterm_gui",
+      "detail": "User 2026-08-29 after 058 hover OK: wezterm opens links without Ctrl+click. 034 only honored user lua Ctrl+click OpenLinkAtMouseCursor. wezterm-gui default InputMap unmodified Left Up is CompleteSelectionOrOpenLinkAtMouseCursor (open if selection empty). 059: honor that default. **User-ok** 2026-08-29 (opens when defaults on)."
+    },
+    {
+      "at": "2026-08-29T21:40:00Z",
+      "id": "disable_default_mouse_bindings_must_skip_plain_click_open",
+      "detail": "User 2026-08-29 after 059: with disable_default_mouse_bindings = true, wezterm-gui only highlights; GPUI still opened on a plain click. 060: default_blocked includes that flag; lua Ctrl+click still opens. cargo test --lib hover:: . **User-ok** 2026-08-29 (“confirmed as working”)."
+    },
+    {
+      "at": "2026-08-29T23:10:00Z",
+      "id": "060_disable_default_mouse_bindings_user_ok",
+      "detail": "User 2026-08-29 after 060: “confirmed as working.” With disable_default_mouse_bindings = true, hover still underlines; plain click does not open; Ctrl+click still opens. Do not start 026."
+    },
+    {
+      "at": "2026-08-30T02:40:00Z",
+      "id": "023_boxdraw_closed",
+      "detail": "User 2026-08-29: mark 023 finished. Box-draw U+2500–259F already **user-ok** (echo/tree). Tight per-cell clip stays reverted (025). Powerline U+E0B0 is a later slice if nerd-font prompts look wrong, not 023 leftover. Do not start 026."
+    },
+    {
+      "at": "2026-08-30T02:50:00Z",
+      "id": "honor_command_palette_font_size",
+      "detail": "User asked to implement command_palette_font (Segoe UI) / command_palette_font_size (12). 061: apply family + points-as-CSS-px on the Command Palette overlay (title, Input, rows, status). Picker/charselect fonts parked. cargo test --lib lua_ui:: 8/8. **User-ok** 2026-08-29 (“confirmed as working”)."
+    },
+    {
+      "at": "2026-08-30T02:57:00Z",
+      "id": "061_command_palette_font_user_ok",
+      "detail": "User 2026-08-29 after 061: “confirmed as working.” Ctrl+Shift+P is Segoe UI at 12pt. Do not start 026."
+    },
+    {
+      "at": "2026-08-30T03:20:00Z",
+      "id": "honor_window_decorations",
+      "detail": "User asked for https://wezterm.org/config/lua/config/window_decorations.html. 062: TITLE native caption vs INTEGRATED_BUTTONS (TabBar inside TitleBar) vs RESIZE/NONE. WindowOptions is_resizable from RESIZE. Left alignment / custom buttons / macOS flags parked. cargo test --lib lua_ui:: 9/9. Needs user-try."
+    },
+    {
+      "at": "2026-08-30T03:40:00Z",
+      "id": "062_window_decorations_user_ok",
+      "detail": "User 2026-08-29 after 062: “confirmed as working.” TITLE native Windows caption; INTEGRATED_BUTTONS one chrome row; tab-bar empty space drags including NONE. Do not start 026."
     }
   ],
   "blockers": [],
@@ -1407,11 +1537,11 @@
     "conpty_vertical_junk": "also_in_wezterm_gui_polish_later",
     "gpui_fps_hud": "palette_only_050",
     "lua_config": "user_ok_font_scheme_scrollback_bell",
-    "lua_config_second_slice_034": "user_ok_except_hyperlink_hover_highlight",
+    "lua_config_second_slice_034": "user_ok",
     "lua_config_matrix": "docs/lua-config.json",
     "selection_copy_paste": "user_ok",
     "click_focus_022": "user_ok",
-    "boxdraw_cell_clip_023": "user_ok_boxdraw_clip_reverted_025",
+    "boxdraw_cell_clip_023": "finished",
     "hi_dpi_line_sprite_dest_024": "superseded_by_025",
     "hi_dpi_120dpi_clip_and_dest_025": "user_ok",
     "monitor_move_hang_026": "parked_backlog",
@@ -1422,7 +1552,7 @@
     "cursor_block_until_backspace_031": "user_ok",
     "tab_close_exit_keys_032": "user_better_now",
     "last_tab_exit_quits_033": "user_ok",
-    "dialog_cancel_restores_term_focus_037": "needs_user_try_038_dialog_was_invisible",
+    "dialog_cancel_restores_term_focus_037": "user_ok",
     "mount_root_dialog_layer_038": "user_ok",
     "skip_close_confirmation_for_shells_039": "user_ok",
     "tab_shell_splits_040": "user_ok",
@@ -1442,7 +1572,12 @@
     "tab_sends_pty_completion_054": "user_ok",
     "mux_workspaces_055": "user_ok",
     "search_overlay_no_pty_shrink_056": "user_ok",
-    "tab_title_from_dropdown_057": "wired_needs_user_try",
+    "tab_title_from_dropdown_057": "user_ok",
+    "hyperlink_hover_highlight_058": "user_ok",
+    "plain_click_opens_link_059": "user_ok",
+    "disable_default_mouse_bindings_060": "user_ok",
+    "command_palette_font_061": "user_ok",
+    "window_decorations_062": "user_ok",
     "command_palette_matrix": "docs/command-palette.json",
     "launcher_matrix": "docs/launcher.json"
   }
